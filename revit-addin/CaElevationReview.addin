@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Revit add-in manifest for CA Elevation Review.
+
+  Drop this file (and the built DLL it points to) into one of:
+    %ProgramData%\Autodesk\Revit\Addins\<year>\     (all users)
+    %AppData%\Autodesk\Revit\Addins\<year>\          (current user)
+
+  Update <Assembly> to the absolute path of the built CaElevationReview.Addin.dll
+  for the matching Revit year, OR to a path relative to this manifest if you keep
+  the DLL alongside it. Pick the TFM that matches the Revit year:
+    Revit 2024/2025 -> net48 build
+    Revit 2026      -> net8.0-windows build
+
+  The AddInId GUID below is a placeholder; generate your own once before release
+  and keep it stable thereafter (it identifies the add-in to Revit).
+-->
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>CA Elevation Review</Name>
+    <Assembly>CaElevationReview.Addin.dll</Assembly>
+    <AddInId>4d6f8c1a-2b3e-4f5a-9c7d-1e2f3a4b5c6d</AddInId>
+    <FullClassName>CaElevationReview.Addin.App</FullClassName>
+    <VendorId>STER</VendorId>
+    <VendorDescription>Sterling - CA Elevation Review (Apache-2.0)</VendorDescription>
+  </AddIn>
+</RevitAddIns>

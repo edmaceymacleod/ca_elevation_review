@@ -1,0 +1,44 @@
+# EditorConfig for the CA Elevation Review Revit add-in.
+# Gives `dotnet format` a concrete ruleset to enforce in pre-commit / CI.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,addin,csproj,sln,props,targets}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+indent_size = 4
+# Prefer file-scoped usings ordering: System.* first.
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# Language conventions
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_prefer_braces = true:warning
+csharp_style_namespace_declarations = block_scoped:suggestion
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+
+# Naming + quality
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_predefined_type_for_locals_parameters_members = true:suggestion
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+dotnet_style_readonly_field = true:suggestion
+
+# Treat a few correctness analyzers as warnings, not errors, to keep stubs building.
+dotnet_diagnostic.CA1822.severity = none
+dotnet_diagnostic.IDE0058.severity = none

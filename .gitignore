@@ -1,0 +1,98 @@
+# ---------------------------------------------------------------------------
+# Python (engine/)
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+.installed.cfg
+pip-wheel-metadata/
+
+# Test / type / lint caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.mypy_ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.cache/
+.tox/
+.nox/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# ---------------------------------------------------------------------------
+# .NET / C# (revit-addin/)
+# ---------------------------------------------------------------------------
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+[Dd]ebug/
+[Rr]elease/
+*.nupkg
+project.lock.json
+artifacts/
+TestResults/
+
+# ---------------------------------------------------------------------------
+# Swift / Xcode (ios-app/)
+# ---------------------------------------------------------------------------
+.build/
+.swiftpm/
+DerivedData/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+xcuserdata/
+*.moved-aside
+Package.resolved
+
+# ---------------------------------------------------------------------------
+# Report / fixture build outputs (generated, never committed)
+# ---------------------------------------------------------------------------
+# Seeders build fixtures deterministically; generated report outputs and any
+# locally-built bundles stay out of version control. The committed, immutable
+# fixture inputs under engine/fixtures/ are tracked explicitly by the seeders.
+out/
+output/
+*.report.html
+*.report.pdf
+/engine/fixtures/**/_generated/
+*.bundle.zip
+
+# ---------------------------------------------------------------------------
+# Editors / tooling
+# ---------------------------------------------------------------------------
+.idea/
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# ---------------------------------------------------------------------------
+# OS files
+# ---------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini

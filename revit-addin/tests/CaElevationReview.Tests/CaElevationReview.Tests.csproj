@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Unit tests for the PURE logic only (serialization, engine arg building,
+    locator resolution, mapping helpers). These deliberately do NOT reference the
+    Revit API, so they build and run on any CI box (Linux/macOS/Windows) with no
+    Revit install -- matching the design doc's "separation of pure logic from
+    platform-coupled code" rule and the "headless unit" test tier.
+
+    Single-target net8.0 keeps CI simple; the code under test multi-targets
+    net48;net8.0-windows in the add-in project.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <!--
+    We compile the pure source files directly rather than ProjectReference the
+    add-in, because the add-in references the Revit API assemblies (absent on CI).
+    Only the platform-agnostic files are linked in.
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\src\CaElevationReview.Addin\Manifest\SpecManifestModels.cs"
+             Link="Linked\SpecManifestModels.cs" />
+    <Compile Include="..\..\src\CaElevationReview.Addin\Verdict\VerdictReportModels.cs"
+             Link="Linked\VerdictReportModels.cs" />
+    <Compile Include="..\..\src\CaElevationReview.Addin\Engine\EngineRunner.cs"
+             Link="Linked\EngineRunner.cs" />
+    <Compile Include="..\..\src\CaElevationReview.Addin\Engine\EngineLocator.cs"
+             Link="Linked\EngineLocator.cs" />
+  </ItemGroup>
+
+</Project>

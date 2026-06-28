@@ -1,0 +1,62 @@
+# iOS capture app CI -- Swift (Phase 2).
+#
+# Per the design doc's CI matrix ("the Swift app on macOS") and the testability
+# rule ("app logic vs ARKit"): only the pure, platform-free CaElevationKit
+# SwiftPM library is built and tested here. The full SwiftUI + ARKit app and any
+# on-device LiDAR tests are gated/manual -- the iOS Simulator has no LiDAR and
+# hosted runners have no device, so those tests run on Ed's hardware, never in
+# this job.
+#
+# Guarded: if ios-app/Package.swift does not exist yet, the build is skipped.
+name: ios-app
+
+on:
+  push:
+    paths:
+      - "ios-app/**"
+      - ".github/workflows/ios-app.yml"
+  pull_request:
+    paths:
+      - "ios-app/**"
+      - ".github/workflows/ios-app.yml"
+
+concurrency:
+  group: ios-app-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: CaElevationKit (macos)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Package.swift exists
+        id: check
+        shell: bash
+        run: |
+          if [ -f "ios-app/Package.swift" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ios-app/Package.swift not found yet; skipping build/test."
+          fi
+
+      - name: Show Swift version
+        if: steps.check.outputs.exists == 'true'
+        run: swift --version
+
+      - name: swift build (CaElevationKit)
+        if: steps.check.outputs.exists == 'true'
+        working-directory: ios-app
+        run: swift build
+
+      - name: swift test (CaElevationKit)
+        if: steps.check.outputs.exists == 'true'
+        working-directory: ios-app
+        run: swift test

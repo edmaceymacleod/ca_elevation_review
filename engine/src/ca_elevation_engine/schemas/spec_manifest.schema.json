@@ -1,0 +1,128 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/edmaceymacleod/ca_elevation_review/schemas/spec_manifest.schema.json",
+  "title": "Spec Manifest",
+  "description": "Expected devices extracted from a Revit model, plus floorplans and the plan-pixel-to-model transform per level. One of the two payloads the engine ingests.",
+  "type": "object",
+  "required": ["schema_version", "project", "levels", "devices"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of this manifest format."
+    },
+    "project": {
+      "type": "object",
+      "required": ["id", "name", "units"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "revit_file": { "type": "string" },
+        "exported_at": { "type": "string", "format": "date-time" },
+        "units": { "type": "string", "enum": ["feet", "meters"] }
+      }
+    },
+    "coordinate_system": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "north_angle": {
+          "type": "number",
+          "description": "Angle of project north relative to true north, degrees."
+        }
+      }
+    },
+    "default_tolerances": { "$ref": "#/$defs/tolerances" },
+    "levels": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/level" }
+    },
+    "devices": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/device" }
+    }
+  },
+  "$defs": {
+    "tolerances": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Pass/flag thresholds. position/mounting_height in project units; orientation in degrees.",
+      "properties": {
+        "position": { "type": "number", "exclusiveMinimum": 0 },
+        "mounting_height": { "type": "number", "exclusiveMinimum": 0 },
+        "orientation": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "level": {
+      "type": "object",
+      "required": ["id", "name", "elevation", "floorplan"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "elevation": {
+          "type": "number",
+          "description": "Z height of the finished floor for this level, project units."
+        },
+        "floorplan": {
+          "type": "object",
+          "required": ["image", "width_px", "height_px", "pixel_to_model"],
+          "additionalProperties": false,
+          "properties": {
+            "image": { "type": "string", "description": "Relative path to the floorplan image in the bundle." },
+            "width_px": { "type": "integer", "exclusiveMinimum": 0 },
+            "height_px": { "type": "integer", "exclusiveMinimum": 0 },
+            "pixel_to_model": {
+              "type": "array",
+              "description": "2x3 row-major affine mapping plan pixel (px,py,1) -> model (X,Y). [a,b,c, d,e,f] => X=a*px+b*py+c, Y=d*px+e*py+f.",
+              "items": { "type": "number" },
+              "minItems": 6,
+              "maxItems": 6
+            }
+          }
+        }
+      }
+    },
+    "device": {
+      "type": "object",
+      "required": ["id", "family", "type", "level_id", "position"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "Stable unique device id (e.g. Revit ElementId or UniqueId)." },
+        "family": { "type": "string" },
+        "type": { "type": "string" },
+        "level_id": { "type": "string" },
+        "elevation_id": { "type": "string", "description": "Which elevation/wall view this device belongs to." },
+        "position": { "$ref": "#/$defs/point3" },
+        "mounting_height": {
+          "type": "number",
+          "description": "Height above finished floor, project units. If omitted, derived from position.z - level.elevation."
+        },
+        "orientation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "facing_angle": { "type": "number", "description": "Heading in plan the device faces, degrees, 0=+X CCW." },
+            "up_axis": { "type": "string", "enum": ["up", "down", "left", "right"], "default": "up" }
+          }
+        },
+        "tolerances": { "$ref": "#/$defs/tolerances" },
+        "metadata": { "type": "object" }
+      }
+    },
+    "point3": {
+      "type": "object",
+      "required": ["x", "y", "z"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    }
+  }
+}

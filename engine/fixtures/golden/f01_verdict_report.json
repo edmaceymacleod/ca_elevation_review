@@ -1,0 +1,104 @@
+{
+  "device_results": [
+    {
+      "approximate": false,
+      "confidence": 0.8653,
+      "deltas": {
+        "mounting_height": 0.009999999999999787,
+        "orientation": 2.0,
+        "position": 0.02236067977499742
+      },
+      "device_id": "D-PASS",
+      "family": "Card Reader",
+      "identity_confirmed": true,
+      "matched_shot_id": "S1",
+      "notes": [],
+      "type": "HID-R10",
+      "verdict": "pass"
+    },
+    {
+      "approximate": false,
+      "confidence": 0.3,
+      "deltas": {
+        "mounting_height": 0.0,
+        "orientation": 1.0,
+        "position": 0.2999999999999998
+      },
+      "device_id": "D-FLAG",
+      "family": "Card Reader",
+      "identity_confirmed": false,
+      "matched_shot_id": "S1",
+      "notes": [
+        "position 0.300 > tol 0.083"
+      ],
+      "type": "HID-R10",
+      "verdict": "flag"
+    },
+    {
+      "approximate": false,
+      "confidence": 0.7,
+      "deltas": {
+        "mounting_height": null,
+        "orientation": null,
+        "position": null
+      },
+      "device_id": "D-ABSENT",
+      "family": "Speaker",
+      "identity_confirmed": false,
+      "matched_shot_id": null,
+      "notes": [
+        "expected in view but no matching device observed"
+      ],
+      "type": "JBL-C6",
+      "verdict": "absent"
+    },
+    {
+      "approximate": false,
+      "confidence": 0.9,
+      "deltas": {
+        "mounting_height": 0.0,
+        "orientation": 0.0,
+        "position": 0.0
+      },
+      "device_id": "D-TYPE",
+      "family": "Card Reader",
+      "identity_confirmed": false,
+      "matched_shot_id": "S1",
+      "notes": [
+        "detected type 'Exit Sign' disagrees with expected 'HID-R10'"
+      ],
+      "type": "HID-R10",
+      "verdict": "type_mismatch"
+    },
+    {
+      "approximate": false,
+      "confidence": 0.25,
+      "deltas": {
+        "mounting_height": null,
+        "orientation": null,
+        "position": null
+      },
+      "device_id": "D-GAP",
+      "family": "Camera",
+      "identity_confirmed": false,
+      "matched_shot_id": null,
+      "notes": [
+        "not within any captured view (coverage gap)"
+      ],
+      "type": "AXIS-P32",
+      "verdict": "absent"
+    }
+  ],
+  "engine_version": "0.1.0",
+  "generated_at": "2026-06-28T00:00:00Z",
+  "project_id": "demo-office-01",
+  "schema_version": "1.0.0",
+  "summary": {
+    "absent": 2,
+    "flag": 1,
+    "pass": 1,
+    "total": 5,
+    "type_mismatch": 1
+  },
+  "units": "feet"
+}

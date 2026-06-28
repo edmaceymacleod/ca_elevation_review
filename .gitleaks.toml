@@ -1,0 +1,27 @@
+# Gitleaks config for CA Elevation Review.
+#
+# Extends the bundled default ruleset (which covers cloud keys, tokens, private
+# keys, etc.) and adds repo-specific allowlists so the local-first, no-secrets
+# nature of this project does not trip on fixtures and schema example data.
+title = "CA Elevation Review gitleaks config"
+
+[extend]
+# Inherit gitleaks' built-in rules; we only add allowlisting below.
+useDefault = true
+
+[allowlist]
+description = "Repo-specific false-positive allowlist"
+
+paths = [
+  # Test fixtures and golden reports contain synthetic ids/poses, not secrets.
+  '''engine/fixtures/.*''',
+  '''.*\.schema\.json$''',
+  # Lockfiles and build outputs.
+  '''(^|/)(bin|obj|\.build|DerivedData|dist|build)/''',
+]
+
+regexes = [
+  # ARKit poses / affines are arrays of floats, not credentials.
+  '''pixel_to_model''',
+  '''"pose"\s*:''',
+]

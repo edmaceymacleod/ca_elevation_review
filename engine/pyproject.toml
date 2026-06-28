@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ca-elevation-engine"
+version = "0.1.0"
+description = "As-built elevation verification engine: compare an expected Revit device manifest against a captured site reality and emit per-device verdicts and a report."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Sterling" }]
+keywords = ["revit", "as-built", "verification", "lidar", "construction", "qa"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering",
+]
+
+# Core deps are deliberately light so the engine installs and tests headlessly
+# anywhere. Heavy native backends (Open3D / PDAL / pye57 / OpenCV / CoreML) are
+# optional extras, loaded lazily, so a contributor can hack the brain without
+# them.
+dependencies = [
+    "jsonschema>=4.0",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+# Heavy registration / point-cloud / vision backends. Optional on purpose.
+heavy = [
+    "open3d>=0.17; platform_system != 'Linux' or python_version < '3.13'",
+    "pye57>=0.4",
+    "opencv-python-headless>=4.8",
+]
+report = [
+    "jinja2>=3.1",
+]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+    "mypy>=1.8",
+]
+
+[project.scripts]
+ca-elevation = "ca_elevation_engine.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/edmaceymacleod/ca_elevation_review"
+Repository = "https://github.com/edmaceymacleod/ca_elevation_review"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ca_elevation_engine = ["schemas/*.json", "report/templates/*.html", "py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "unit: pure headless unit tests (no heavy deps, no device, no Revit)",
+    "integration: engine over fixture capture packages against golden reports",
+    "heavy: requires optional heavy backends (open3d/pye57/opencv)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.10"
+packages = ["ca_elevation_engine"]
+ignore_missing_imports = true
+warn_unused_ignores = true
