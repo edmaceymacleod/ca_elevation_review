@@ -1,0 +1,248 @@
+# Single-gate CI.
+#
+# Replaces the six per-component path-filtered workflows. This one workflow
+# ALWAYS runs (no top-level path filter), so the final `all-green` job always
+# reports a status -- which means it can be the ONE required check in branch
+# protection without the "required check stuck pending forever" problem that
+# path-filtered required checks suffer from.
+#
+# A `changes` job (dorny/paths-filter) decides which component jobs run; each
+# component job is conditioned on its filter. `all-green` waits for them all and
+# fails if any GATING job failed (skipped is fine). The Revit add-in is
+# non-gating by design (no Revit API assemblies on hosted runners).
+#
+# Required check to configure in Settings -> Branches: "CI / all-green".
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      engine: ${{ steps.filter.outputs.engine }}
+      pyrevit: ${{ steps.filter.outputs.pyrevit }}
+      schema: ${{ steps.filter.outputs.schema }}
+      ios: ${{ steps.filter.outputs.ios }}
+      revit: ${{ steps.filter.outputs.revit }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            engine:
+              - 'engine/**'
+              - '.github/workflows/ci.yml'
+            pyrevit:
+              - 'pyrevit-extension/**'
+              - 'engine/**'
+              - '.github/workflows/ci.yml'
+            schema:
+              - 'engine/src/ca_elevation_engine/schemas/**'
+              - 'engine/fixtures/**'
+              - 'engine/tools/validate_schemas.py'
+              - '.github/workflows/ci.yml'
+            ios:
+              - 'ios-app/**'
+              - '.github/workflows/ci.yml'
+            revit:
+              - 'revit-addin/**'
+              - '.github/workflows/ci.yml'
+
+  # --- Engine: ruff + format + mypy (blocking) + pytest, on 3.10/3.11/3.12 ---
+  engine:
+    name: engine (py${{ matrix.python-version }})
+    needs: changes
+    if: needs.changes.outputs.engine == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: engine/pyproject.toml
+      - run: pip install -e "engine[dev,report]"
+      - name: Ruff lint
+        run: ruff check engine
+      - name: Ruff format check
+        run: ruff format --check engine
+      - name: mypy
+        working-directory: engine
+        run: mypy
+      - name: pytest (headless, not heavy)
+        working-directory: engine
+        run: pytest -q -m "not heavy" --cov=ca_elevation_engine
+
+  # --- pyRevit lib: 3.8/3.9 floor jobs (engine NOT installed) ---------------
+  pyrevit_floor:
+    name: pyrevit floor (py${{ matrix.python-version }})
+    needs: changes
+    if: needs.changes.outputs.pyrevit == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install floor toolchain (capped; NO engine)
+        run: pip install -r pyrevit-extension/tests/requirements-floor.txt
+      - name: Ruff lint (py38)
+        working-directory: pyrevit-extension
+        run: ruff check --config tests/pyproject.toml CaElevationReview.extension/lib tests
+      - name: Ruff format check
+        working-directory: pyrevit-extension
+        run: ruff format --check --config tests/pyproject.toml CaElevationReview.extension/lib tests
+      - name: Mypy (lib, py3.8)
+        working-directory: pyrevit-extension
+        run: mypy --config-file tests/pyproject.toml CaElevationReview.extension/lib
+      - name: Pytest (engine-free tests only)
+        working-directory: pyrevit-extension/tests
+        run: pytest -q -m "not engine"
+
+  # --- pyRevit lib: 3.10/3.11/3.12 engine jobs (engine installed) -----------
+  pyrevit_engine:
+    name: pyrevit engine (py${{ matrix.python-version }})
+    needs: changes
+    if: needs.changes.outputs.pyrevit == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep in sync with the engine job's matrix.
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install lib test deps + the engine ([report] for real PDF)
+        run: pip install pytest "./engine[report]"
+      - name: Engine must import (hard gate, not importorskip)
+        run: python -c "import ca_elevation_engine; print(ca_elevation_engine.__version__)"
+      - name: Pytest (full suite incl. engine + integration)
+        working-directory: pyrevit-extension/tests
+        run: pytest -q
+
+  # --- Schemas + fixtures validate (fail-closed) ----------------------------
+  schema:
+    name: validate schemas + fixtures
+    needs: changes
+    if: needs.changes.outputs.schema == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e "engine"
+      - run: python engine/tools/validate_schemas.py -v
+
+  # --- iOS: build/test the pure kit (blocks); SwiftLint (non-blocking) ------
+  ios_kit:
+    name: CaElevationKit (macos)
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift --version
+      - name: swift build
+        working-directory: ios-app
+        run: swift build
+      - name: swift test
+        working-directory: ios-app
+        run: swift test
+      - name: SwiftLint (non-blocking until confirmed clean on a Mac)
+        continue-on-error: true
+        working-directory: ios-app
+        run: swiftlint lint --config .swiftlint.yml
+
+  # --- Revit C# add-in (NON-GATING: Revit API assemblies absent on runners) -
+  revit:
+    name: revit-addin (windows)
+    needs: changes
+    if: needs.changes.outputs.revit == 'true'
+    runs-on: windows-latest
+    env:
+      SOLUTION: revit-addin/CaElevationReview.sln
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore
+        continue-on-error: true
+        run: dotnet restore "$env:SOLUTION"
+      - name: dotnet format (verify)
+        continue-on-error: true
+        run: dotnet format "$env:SOLUTION" --verify-no-changes
+      - name: Build
+        continue-on-error: true
+        run: dotnet build "$env:SOLUTION" --configuration Release --no-restore
+      - name: Test
+        continue-on-error: true
+        run: dotnet test "$env:SOLUTION" --configuration Release --no-build
+
+  # --- Secret scanning: ALWAYS runs (no change filter) ----------------------
+  secret_scan:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  # --- The single required check --------------------------------------------
+  all-green:
+    name: all-green
+    if: always()
+    needs: [changes, engine, pyrevit_floor, pyrevit_engine, schema, ios_kit, revit, secret_scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate on required jobs (success or skipped; revit is non-gating)
+        run: |
+          declare -A R=(
+            [changes]="${{ needs.changes.result }}"
+            [engine]="${{ needs.engine.result }}"
+            [pyrevit_floor]="${{ needs.pyrevit_floor.result }}"
+            [pyrevit_engine]="${{ needs.pyrevit_engine.result }}"
+            [schema]="${{ needs.schema.result }}"
+            [ios_kit]="${{ needs.ios_kit.result }}"
+            [secret_scan]="${{ needs.secret_scan.result }}"
+          )
+          bad=0
+          for k in "${!R[@]}"; do
+            v="${R[$k]}"
+            if [ "$v" != "success" ] && [ "$v" != "skipped" ]; then
+              echo "::error::required job '$k' = $v"
+              bad=1
+            fi
+          done
+          if [ "$bad" = 0 ]; then
+            echo "All required jobs passed or were skipped (revit-addin is non-gating)."
+          fi
+          exit $bad

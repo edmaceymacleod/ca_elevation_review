@@ -72,7 +72,8 @@ repos:
         pass_filenames: false
         stages: [pre-push, manual]
 
-      # JSON Schema + fixture validation (mirrors schema-validation.yml).
+      # JSON Schema + fixture validation (mirrors the validate schemas + fixtures
+      # job in ci.yml).
       - id: validate-schemas
         name: validate JSON schemas + fixtures
         entry: python engine/tools/validate_schemas.py

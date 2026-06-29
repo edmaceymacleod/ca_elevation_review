@@ -5,7 +5,8 @@ Best-effort drift guard: the lib's VERDICT_COLORS must cover exactly the engine'
 only) and imports inside the function so floor-job collection never needs the
 engine. NOTE: ``engine/tests/test_registry.py`` is the AUTHORITATIVE
 enum-completeness gate; this lib ratchet can go stale silently (a verdict added
-under engine/ triggers engine.yml, not pyrevit-extension.yml), which is exactly
+under engine/ triggers the ``engine`` job in ci.yml, not the ``pyrevit engine``
+jobs), which is exactly
 why ``writeback.color_for_verdict`` is fail-soft (sentinel + warning, never
 KeyError) rather than relying on this test.
 """

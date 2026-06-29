@@ -112,7 +112,8 @@ read it and never write it.**
 - A test that needs a *different* input writes a new fixture via a seeder; it does
   not mutate the shared one. Ad-hoc fixture mutation is forbidden.
 - `engine/tools/validate_schemas.py` validates every fixture against its JSON
-  Schema, fail-closed, in CI (`schema-validation.yml`).
+  Schema, fail-closed, in CI (the `validate schemas + fixtures` job in
+  `.github/workflows/ci.yml`; see docs/ci.md).
 
 Fixture filename convention (so the validator can route them):
 `*.manifest.json` -> spec manifest, `*.capture.json` -> capture package,

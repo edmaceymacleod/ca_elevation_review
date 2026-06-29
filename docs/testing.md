@@ -53,8 +53,9 @@ Add a capability and its registry entry, fixture, and golden in the same change.
 `engine/tools/validate_schemas.py` confirms each JSON Schema under
 `engine/src/ca_elevation_engine/schemas/` is a valid draft-07 schema, then
 validates every discovered fixture against the matching schema, **fail-closed**
-(exit 1 on any error). The `schema-validation.yml` workflow runs it on every
-change to schemas, fixtures, or the validator. A malformed manifest / capture
+(exit 1 on any error). The `validate schemas + fixtures` job in
+`.github/workflows/ci.yml` runs it on every change to schemas, fixtures, or the
+validator (see docs/ci.md). A malformed manifest / capture
 package / report fails the build rather than the field. The script is robust to
 fixtures not existing yet (Phase 0 bootstrap validates the schemas alone).
 
@@ -85,19 +86,20 @@ Swift toolchains, and the heavy pytest suite run on `pre-push` / `manual`.
 
 ## 6. CI matrix across components
 
-Each component builds and tests on its own OS, independently, so a break is
-localized:
+A single workflow (`.github/workflows/ci.yml`) runs per-component jobs, each on
+its own OS, so a break is localized (see docs/ci.md for the full model):
 
-| Workflow | Component | Runner | Notes |
+| Job (in `ci.yml`) | Component | Runner | Notes |
 |---|---|---|---|
-| `engine.yml` | engine | ubuntu-latest | matrix py3.10/3.11/3.12; ruff + mypy(non-blocking) + pytest cov |
-| `revit-addin.yml` | add-in | windows-latest | build/test non-blocking (Revit API assemblies gated); skips if no `.sln` |
-| `ios-app.yml` | `CaElevationKit` | macos-latest | `swift build`/`test` of the pure kit; skips if no `Package.swift` |
-| `schema-validation.yml` | schemas/fixtures | ubuntu-latest | fail-closed JSON Schema + fixture validation |
+| `engine` | engine | ubuntu-latest | matrix py3.10/3.11/3.12; ruff + mypy(blocking) + pytest cov |
+| `revit-addin (windows)` | add-in | windows-latest | build/test non-blocking (Revit API assemblies gated); skips if no `.sln` |
+| `CaElevationKit (macos)` | `CaElevationKit` | macos-latest | `swift build`/`test` of the pure kit; skips if no `Package.swift` |
+| `validate schemas + fixtures` | schemas/fixtures | ubuntu-latest | fail-closed JSON Schema + fixture validation |
 
-Each workflow is `paths:`-filtered to its component so unrelated changes do not
-trigger it, and the platform-coupled jobs guard for the component existing on
-disk before building.
+A `changes` job (dorny/paths-filter) selects which component jobs run, so
+unrelated changes don't trigger them, and the platform-coupled jobs guard for the
+component existing on disk before building. The single required status check is
+`CI / all-green`.
 
 ## 7. Separation of pure logic from platform-coupled code
 

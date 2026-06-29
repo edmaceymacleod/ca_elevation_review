@@ -68,9 +68,9 @@ ruff check  --config tests/pyproject.toml CaElevationReview.extension/lib tests
 mypy        --config-file tests/pyproject.toml CaElevationReview.extension/lib
 ```
 
-CI (`.github/workflows/pyrevit-extension.yml`) runs a 3.8/3.9 floor matrix
-(engine-free) plus a 3.10/3.11/3.12 engine matrix, gated by a single
-`all-green` check.
+CI (`.github/workflows/ci.yml`) runs the `pyrevit floor` jobs (3.8/3.9 matrix,
+engine-free) plus the `pyrevit engine` jobs (3.10/3.11/3.12 engine matrix), gated
+by the single `CI / all-green` required check (see docs/ci.md).
 
 ## What is validated where
 

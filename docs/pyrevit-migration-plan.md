@@ -251,7 +251,8 @@ The test invokes `ca-elevation run` over them and asserts `verdict_report.json`
 parses.
 
 **Schema-gating scope.** The repo's standalone validator
-(`engine/tools/validate_schemas.py` + `schema-validation.yml` + the pre-commit
+(`engine/tools/validate_schemas.py` + the `validate schemas + fixtures` job (now
+consolidated into `.github/workflows/ci.yml` — see docs/ci.md) + the pre-commit
 hook) only discovers fixtures under `engine/fixtures/`. The borrowed engine
 fixture above **is** covered; any payload the pyrevit tests construct in-test
 (the `manifest_builder` round-trip dict) is **not** seen by it. That is acceptable
@@ -389,8 +390,9 @@ workflow + pre-commit `files` regex.)
   `engine/tests/test_registry.py::test_registry_verdicts_match_enum`, **but not at
   parity with it**: `test_registry` lives next to the enum and runs on every engine
   change; this lib ratchet runs only on the **pyrevit-extension** workflow's 3.10+
-  jobs, and a verdict added under `engine/` triggers `engine.yml`, **not**
-  `pyrevit-extension.yml` (path-filtered to `pyrevit-extension/**`) — so it can go
+  jobs, and a verdict added under `engine/` triggers the `engine` job, **not** the
+  pyRevit jobs (now consolidated into `.github/workflows/ci.yml`; the pyRevit jobs
+  are path-filtered to `pyrevit-extension/**` — see docs/ci.md) — so it can go
   stale silently until something under `pyrevit-extension/` also changes.
   **Decision (Section 6): the lib ratchet is best-effort; `test_registry` stays the
   authoritative enum-completeness gate.** Because that leaves a window where the
@@ -423,10 +425,9 @@ assuming `report.pdf`.
 
 ## 6. CI, pre-commit, docs changes
 
-- **New workflow `pyrevit-extension.yml`**, `paths`-filtered to
-  `[pyrevit-extension/**, .github/workflows/pyrevit-extension.yml]` (matching the
-  existing four workflows) so it triggers only on relevant changes. Two job
-  groups, on **ubuntu**:
+- **New pyRevit jobs** (now consolidated into `.github/workflows/ci.yml` — see
+  docs/ci.md), `paths`-filtered to `[pyrevit-extension/**]` so they trigger only on
+  relevant changes. Two job groups, on **ubuntu**:
   - **Floor jobs — Python 3.8 + 3.9:** run only the **engine-free** `lib/` tests
     plus `ruff` (`target-version=py38`) + `mypy` over `lib/ca_elevation_revit`.
     These **do NOT install the engine** (the hard gate is the engine's
@@ -454,7 +455,7 @@ assuming `report.pdf`.
       would `ModuleNotFoundError` at collection on the floor jobs. Enforce the gate
       in `conftest.py` (e.g. auto-skip engine-marked tests below 3.10) so the
       discipline is structural.
-  - **Engine jobs — match `engine.yml`'s matrix (currently 3.10/3.11/3.12):** quote
+  - **Engine jobs — match the `engine` job's matrix (currently 3.10/3.11/3.12):** quote
     it rather than hardcoding, so the two workflows cannot silently drift if the
     engine repins. Install the engine on **all** these jobs with pip caching (to
     keep the numpy build fast) and run the engine-importing round-trip tests +
@@ -462,7 +463,7 @@ assuming `report.pdf`.
     `tests/pyproject.toml` dev deps (the lib does not need engine's `[dev]`); the
     engine is installed only for the round-trip + integration imports, so the
     command is `pip install <lib-test-deps> ./engine[report]` — the `[report]`
-    extra, **not** `engine.yml`'s `-e "engine[dev,report]"`, since `[dev]` is engine
+    extra, **not** the `engine` job's `-e "engine[dev,report]"`, since `[dev]` is engine
     tooling the lib doesn't reuse. **Make the engine a hard import on these jobs** —
     assert
     `import ca_elevation_engine` succeeds; do **not** use `pytest.importorskip`
@@ -611,12 +612,14 @@ clone URL / drop into the extensions dir." Four points for a conscious sign-off:
 1. Scaffold `pyrevit-extension/` tree (layout above), engine untouched.
 2. Implement the four real `lib` modules + their unit tests; get them green
    **locally** (CI does not exist until step 5 — avoid the chicken/egg). If you
-   prefer "green in CI" literally true here, hoist a minimal `pyrevit-extension.yml`
-   skeleton (the two job groups) to step 1.
+   prefer "green in CI" literally true here, hoist a minimal pyRevit-jobs skeleton
+   (the two job groups; now consolidated into `.github/workflows/ci.yml` — see
+   docs/ci.md) to step 1.
 3. Stub the three `revit_*` modules with `# LIVE` markers and clear TODOs.
 4. Wire the three `script.py` entries + `bundle.yaml` + placeholder icons.
-5. Add `pyrevit-extension.yml` (floor + engine job groups, path filter, branch-
-   protection required check); update pre-commit + docs. **Keep `revit-addin/`**
+5. Add the pyRevit jobs (floor + engine job groups, path filter, branch-
+   protection required check; now consolidated into `.github/workflows/ci.yml` —
+   see docs/ci.md); update pre-commit + docs. **Keep `revit-addin/`**
    CI-gated off.
 6. Hand Ed a checklist for the live-Revit validation pass — including the
    **idempotent re-import** criterion: writeback clears the **previously applied**

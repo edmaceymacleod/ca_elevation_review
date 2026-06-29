@@ -44,9 +44,10 @@ hardware + an Apple Developer account (Ed).
   `frame.sceneDepth?.depthMap` with `supportsFrameSemantics(.sceneDepth)`
   availability checks, correct intrinsics extraction, and a correct
   column-major→row-major 16-element pose conversion matching the schema.
-- **CI (`ios-app.yml`) is right for its scope:** builds/tests only the kit on
-  `macos-latest` (an Apple-Silicon runner), which is exactly the headless-testable
-  surface.
+- **CI (the `CaElevationKit (macos)` job in `ci.yml`) is right for its scope:**
+  builds/tests only the kit on `macos-latest` (an Apple-Silicon runner), which is
+  exactly the headless-testable surface (SwiftLint now runs there, non-blocking;
+  see docs/ci.md).
 
 ## The guide's value — and where it stops (important for us)
 
@@ -96,7 +97,8 @@ Device / signing (NOT in the guide; required for LiDAR):
 
 - Add an `xcodebuild` compile-only CI step (Simulator destination) once a project
   is generated, so app-layer source breaks are caught without a device; pin Xcode
-  in `ios-app.yml`; add SwiftLint per design doc §5.
+  in the `CaElevationKit (macos)` job in `ci.yml`. (SwiftLint now runs there,
+  non-blocking — see docs/ci.md.)
 - Add an `ARSessionDelegate` for tracking-state / interruption / failure handling
   (today failures are silent).
 - Add permission-denied UI (not just the implicit first-use prompt).

@@ -1,7 +1,8 @@
 # SwiftLint config for the CA Elevation Review iPhone app.
 #
 # Lints the pure CaElevationKit library and the SwiftUI/ARKit app layer. Run in
-# CI on macOS (currently non-blocking — see .github/workflows/ios-app.yml — until
+# CI on macOS (currently non-blocking — see the CaElevationKit (macos) job in
+# .github/workflows/ci.yml — until
 # the agent-authored Swift is confirmed clean on a real Mac, then make it gate).
 included:
   - Sources
