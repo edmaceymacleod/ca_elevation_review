@@ -512,7 +512,7 @@ assuming `report.pdf`.
 | Syntax floor — pure `lib/` import-smoke + ruff(py38)/mypy, **no engine** | CPython **3.8/3.9**, ubuntu | **Yes — enforces the 3.8 floor** |
 | Headless unit — `lib/` round-trip via `SpecManifest.from_dict` + schema validate | CPython **3.10+**, imports engine | **Yes — the new gain** |
 | Integration — extension drives the real `ca-elevation` CLI over the engine's repo-relative fixture | CPython 3.10+, CI | Yes (engine installed; `[report]` extra if asserting PDF) |
-| Live — `revit_extract` / `revit_export` / `revit_writeback` inside Revit | Ed's Revit install | No — gated/manual |
+| Live — `revit_extract` / `revit_export` / `revit_writeback` inside Revit | Ed's Windows Revit (now Claude-drivable via MCP — §11) | No — gated/manual |
 
 The two CI tiers are *different mechanisms*: the headless tier proves builder
 correctness in-process (`from_dict` + `_validate`, which also enforces cross-field
@@ -630,6 +630,63 @@ clone URL / drop into the extensions dir." Four points for a conscious sign-off:
   genuinely runnable and verified here).
 - Live `revit_*` fill-in + on-Revit validation: **Ed-gated**, separate, hardware-bound.
 
+## 11. Live development & validation via the Sterling Revit MCP server
+
+A vendored Sterling fork of `mcp-server-for-revit-python` (pyRevit Routes + an
+external CPython MCP server, localhost-only, pinned upstream SHA) gives a Claude
+Code session a **live control channel into running Revit**, with **multi-version
+discovery/binding across 2024–2027** (including the CoreCLR/.NET 8/10 runtimes
+that 2025+ use) via `list_revit_instances` / `select_revit_instance`, plus
+`execute_revit_code` and `list_dialogs` / `dismiss_dialog` for clearing modal
+wedges. This is a **development & validation accelerator only**: it does **not**
+change the locked architecture (Section 3) and ships to **no end user**.
+
+How it changes the work:
+
+- **The three live-Revit stubs become Claude-iterable, not blind hand-offs.**
+  Section 2 calls `revit_extract` / `revit_export` / `revit_writeback`
+  irreducibly Ed-only. With this bridge connected to a running Revit, a session
+  can **run and refine them in place** — execute the `FilteredElementCollector`
+  walk against real element params, test a view/floorplan export, apply
+  `OverrideGraphicSettings` and visually confirm the verdict colouring — instead
+  of writing them blind. **"Irreducible, Ed-only" → "Claude-iterable against a
+  connected Revit; Ed still owns hardware + final sign-off."** The Section 7
+  *Live* tier stays out of headless CI, but its inner loop is no longer
+  manual-only.
+- **Multi-version validation across the exact target range.** One session can
+  confirm the extract/export/writeback calls against 2024, 2025, 2026, 2027 in
+  turn. This also independently corroborates the plan's CoreCLR-on-2025+ facts
+  (Section 3, the in-process-C#-compile caveat) and the `net8` TFM correction.
+- **Real-model fixtures.** `execute_revit_code` against a genuine model can
+  **extract a real manifest**, seeding engine fixtures — addressing design.md's
+  "sample Revit model for manifest-extraction tests" need beyond synthetic-only.
+- **Unattended robustness.** `list_dialogs` / `dismiss_dialog` keep a scripted
+  `execute_revit_code` from wedging behind a modal.
+
+Honest boundaries:
+
+- **Not usable in this repo's Linux/CI env** (no Revit; not connected here) and
+  **not a substitute for on-hardware sign-off** — the bridge drives a *real*
+  Revit on **Ed's Windows machine**, so "live" still requires that machine; what
+  changes is that Claude drives it interactively instead of Ed hand-running
+  scripts. Revit is Windows-only, so this loop is **separate from the Mac/iOS
+  loop**.
+- **Engine-runtime independence holds.** The MCP server's *in-Revit* handlers are
+  IronPython 2.7; our extension scripts are CPython (`#! python3`). Both coexist
+  under `%APPDATA%\pyRevit\Extensions` as separate extensions with per-script
+  engines — no conflict, and the Section 3 CPython choice is unaffected.
+- **Trust scope.** `execute_revit_code` is arbitrary code execution inside Revit
+  — a dev-only, localhost-only tool. Its egress channel is the LLM transcript
+  (anything a tool returns becomes model context), same posture as any MCP read,
+  pointed at Revit.
+- **Licensing.** This bridge is a **development tool, not shipped**, so it adds
+  **nothing** to the product's GPL3 exposure (Section 8); its own upstream licence
+  still governs Sterling's internal use.
+
+Net: this **relaxes, not eliminates** the live-Revit constraint — it pulls the
+`revit_*` development loop forward into in-session iteration, leaving Ed's
+hardware + sign-off as the remaining gate.
+
 ## Open items to confirm before building
 
 1. **pyRevit version floor** (and therefore the bundled CPython the `lib/` code
@@ -659,3 +716,8 @@ clone URL / drop into the extensions dir." Four points for a conscious sign-off:
    runtime-validation UX (Section 3): a mis-located engine means no validation until
    a full `run`. (Per-project write-back override state is **not** part of this item
    — Section 2 uses an in-model marker, so no separate store is needed.)
+5. **Adopt the Sterling Revit MCP server for the live dev loop?** (Section 11.)
+   Confirm we standardize on it for developing/validating the `revit_*` modules,
+   and share `scripts/install-revit-mcp.ps1` + the exact MCP tool signatures so we
+   can write a `docs/revit-mcp-dev-setup.md` and wire the live loop concretely.
+   Windows-only; does not affect the shipped product or its GPL3 analysis.
