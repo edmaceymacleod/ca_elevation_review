@@ -3,7 +3,10 @@
     "allow": [
       "mcp__github__search_code",
       "mcp__github__get_file_contents",
-      "Bash(python3 engine/tools/validate_schemas.py)"
+      "Bash(python3 engine/tools/validate_schemas.py)",
+      "Workflow",
+      "Agent",
+      "Task"
     ]
   }
 }
