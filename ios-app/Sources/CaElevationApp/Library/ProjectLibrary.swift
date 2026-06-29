@@ -21,7 +21,13 @@ import SwiftUI
 #if canImport(UIKit)
 import UIKit
 #endif
-import CaElevationKit
+// Import only the kit types this file names — NOT a blanket `import
+// CaElevationKit`. The kit declares a `public struct Observation` (a per-shot
+// capture observation) that would shadow the `Observation` *module* the
+// `@Observable` macro expands against (`Observation.ObservationRegistrar`),
+// which fails to build. Selective imports keep `Observation` = the framework.
+import struct CaElevationKit.SpecManifest
+import enum CaElevationKit.BundleIO
 
 /// One discovered project: its bundle directory and decoded manifest.
 struct ProjectEntry: Identifiable, Equatable, Hashable {
