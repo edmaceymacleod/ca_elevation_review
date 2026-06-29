@@ -75,3 +75,18 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+
+# A shared scheme so `xcodebuild -scheme CaElevationReview` is deterministic in
+# CI. XcodeGen does NOT auto-create schemes, and a headless runner never opens
+# the project in Xcode (which is what would otherwise auto-create one), so a
+# fresh `xcodegen generate` would have no scheme for xcodebuild to find. Defining
+# it here also makes the local build/run loop reproducible.
+schemes:
+  CaElevationReview:
+    build:
+      targets:
+        CaElevationReview: all
+    run:
+      config: Debug
+    archive:
+      config: Release
