@@ -39,7 +39,19 @@ They are isolated into three small modules (`revit_*`) so everything around them
 is real:
 
 1. **Model walk** — `FilteredElementCollector` reading element params (location,
-   mounting height, facing, family/type).
+   mounting height, facing, family/type). **Identity invariant:** `revit_extract`
+   MUST stamp the Revit **`UniqueId`** (the stable GUID-like string), **not the
+   `ElementId`** (an int, not stable across sessions/files), as `device.id`. The
+   write-back round-trip depends on this: `revit_writeback` resolves elements via
+   `doc.GetElement(uniqueId: str)`, a different overload from
+   `doc.GetElement(ElementId)`. The engine treats `device_id` as an opaque string
+   and echoes it from manifest to report unchanged, and the schema example text
+   says "e.g. Revit ElementId or UniqueId" — so stamping the wrong one passes
+   **every** CI test (ids are just strings) yet silently resolves nothing (or the
+   wrong element) at live write-back. The C# `Apply()` only works because
+   `device_id == UniqueId` (`VerdictWriteback.cs`). This is a **live-validation
+   acceptance criterion** alongside idempotent re-import (step 6); `manifest_builder`
+   should also assert ids are non-empty strings as a cheap guard.
 2. **View/floorplan export** — exporting the plan image and computing the
    pixel→model affine for each level.
 3. **Graphic-override write-back** — colouring elements by verdict in the model.
@@ -58,10 +70,17 @@ is real:
    import time is the *new* report's device ids, which by definition does **not**
    contain a device dropped from the new report. So clearing by the new report's
    ids cannot remove stale colours on dropped devices. The correct mechanism:
-   clear by the **previously applied** override set — persist the element ids
-   CA-Elevation last overrode (extensible storage / a saved filter), or enumerate
-   all elements currently carrying a CA-Elevation override in the view and reset
-   them, **before** applying the new report. Idempotent re-import (including the
+   clear by the **previously applied** override set, **before** applying the new
+   report. **Chosen mechanism (no persistence): enumerate-and-reset by marker.**
+   `revit_writeback`, when it applies an override, also stamps a CA-Elevation
+   **marker** (a project parameter / shared-parameter flag, or a named element
+   set) on each overridden element. On re-import it first enumerates all elements
+   in the active view carrying that marker and resets their `OverrideGraphicSettings`
+   + clears the marker, then applies the new report and re-stamps. This avoids a
+   persisted prior-override store (extensible storage with its own schema GUID and
+   its own stale/partial-set failure modes) entirely — the model itself is the
+   record. `revit_writeback.py` therefore owns **both** application and
+   marker-based clearing (Section 4). Idempotent re-import (including the
    drop-a-device case) is an explicit acceptance criterion for the live validation
    pass.
 
@@ -91,6 +110,14 @@ the pure `lib` modules free of pyRevit globals (the stubs take a doc handle).
     the oldest engine we may land on. This floor is **enforced executably, not by
     convention** (see below), because the engine's own ruff/mypy pins are `py310`
     and would silently *permit* 3.10-only constructs.
+    **The 3.8 floor is a syntax/lint target, not the runtime.** The actual runtime
+    is whatever the pinned pyRevit release bundles — almost certainly *newer* than
+    3.8 (5.x/6.x lines bundle 3.11; the host in this environment is CPython 3.11).
+    The py38/py39 floor jobs are a guard against accidental 3.10-only syntax, **not**
+    proof "we run on 3.8." pyRevit has **no runtime CPython-version gate** (there is
+    no `bundle.yaml` min-engine-version key — see Section 4); the only runtime floor
+    we can enforce is the `script.py` code guard (`sys.version_info` check), and the
+    only build-time floor is this CI lint matrix.
   - The engine (its own venv): stays **3.10+**, unchanged.
   - **Resolve Open item 1 (pyRevit/CPython floor) *before* building** — it sets
     the real syntax floor, and the whole point is to catch 3.10-only syntax
@@ -102,7 +129,13 @@ the pure `lib` modules free of pyRevit globals (the stubs take a doc handle).
     annotation-only PEP 604/585 forms are safe — but note this does **not**
     neutralise *runtime* 3.10 constructs (PEP 604 `X | Y` as a default/cast/
     `isinstance` arg, builtin generics in runtime-evaluated positions, `match`
-    statements, `tomllib`); those are what the py38 lint floor catches.
+    statements, `tomllib`); those are what the py38 lint floor catches. One subtler
+    case ruff/mypy will **not** reliably flag: with the future import, dataclass
+    field annotations are stored as strings and are safe — but a runtime
+    `get_type_hints()` / `dataclasses.fields()` + hint re-evaluation on a lib
+    dataclass whose field is `X | None` **raises on 3.8/3.9**. That is caught only
+    by actually *importing and exercising* every `lib/` module on the floor jobs
+    (the import-smoke requirement in Section 6), not by static analysis.
   - CI runs the **pure `lib/` tests on Python 3.8 and 3.9 *without* installing
     the engine.** The hard gate is the engine's own **`requires-python = ">=3.10"`**
     (`engine/pyproject.toml`): `pip install ./engine` errors on 3.8/3.9 before any
@@ -146,7 +179,7 @@ pyrevit-extension/
 │  ├─ CaElevationReview.tab/
 │  │  └─ Verify.panel/
 │  │     ├─ ExportBundle.pushbutton/
-│  │     │  ├─ bundle.yaml           # title, tooltip, author, engine block
+│  │     │  ├─ bundle.yaml           # title, tooltip, author, engine block (no version floor)
 │  │     │  ├─ script.py             # "#! python3" — thin entry → lib
 │  │     │  └─ icon.png              # placeholder; missing degrades to default. icon.dark.png variant later
 │  │     ├─ ImportCaptures.pushbutton/
@@ -167,9 +200,9 @@ pyrevit-extension/
 │        ├─ writeback.py             # REAL: verdict → override-colour mapping, element grouping
 │        ├─ revit_extract.py         # STUB: the live FilteredElementCollector walk
 │        ├─ revit_export.py          # STUB: live view/floorplan export + transform
-│        └─ revit_writeback.py       # STUB: live graphic-override application
+│        └─ revit_writeback.py       # STUB: live graphic-override application + marker-based clear of prior overrides
 └─ tests/                            # run in normal CPython CI — NO Revit, NO pyRevit
-   ├─ pyproject.toml / mypy.ini      # lib-only ruff (target py38) + mypy (py3.8, ignore_missing_imports)
+   ├─ pyproject.toml / mypy.ini      # lib-only ruff (target py38) + mypy (py3.8, ignore_missing_imports); pytest pythonpath → ../lib
    ├─ conftest.py
    ├─ test_manifest_builder.py       # ENGINE (3.10+): from_dict + schema-valid round-trip, WITH floorplan records
    ├─ test_bundle_io.py              # FLOOR: field-bundle write / capture read round-trips (stdlib only)
@@ -187,6 +220,17 @@ get flagged rather than silently accumulating). `ignore_missing_imports` keeps
 mypy from failing on the unresolvable `Autodesk.Revit.DB` / `pyrevit` imports in
 the three `revit_*` stubs — the function-local-import trick keeps them
 runtime-importable but static analysis sees them regardless of nesting.
+
+**Importability in CI (the load-bearing mechanism).** The lib lives at
+`CaElevationReview.extension/lib/ca_elevation_revit/` — not a pip-installable
+package (no pyproject for the lib, no `setuptools` pointing at the nested `lib/`).
+In real pyRevit the loader puts `lib/` on `sys.path`; in CI **nothing does**
+unless we say so. Concrete mechanism: `tests/pyproject.toml` declares
+`[tool.pytest.ini_options] pythonpath = ["../CaElevationReview.extension/lib"]`
+(pytest 7+), so pytest puts the lib dir on `sys.path` and `import
+ca_elevation_revit` resolves. This is what makes "lib tests / import-smoke run in
+CI" true — without it the import-smoke that enforces the floor cannot even
+collect. (A `conftest.py` `sys.path` insert is an equivalent fallback.)
 
 **`lib/` holds exactly one top-level package (`ca_elevation_revit`).** When the
 CPython engine runs, pyRevit puts its own site/bin paths **and every installed
@@ -229,36 +273,52 @@ workflow + pre-commit `files` regex.)
     byte — but keep the shebang as the **first line** anyway (avoid a BOM or
     header above it) since that is the unambiguous form; verify against the loader
     rather than asserting a hard "first-byte-or-IronPython" rule.
-  - **Belt-and-suspenders:** declare the engine in **`bundle.yaml`** as well —
-    `engine: { clean: true, version: <min CPython your lib targets> }`. pyRevit
-    supports engine min/exact constraints precisely so a script refuses to run on
-    an engine it does not support. This is the **in-Revit counterpart to the py38
-    CI lint floor**: the shebang enforces "CPython," the `bundle.yaml` engine
-    block enforces "a CPython new enough." Treat the `bundle.yaml` block as
-    authoritative for the floor.
-  - There is a known **6.0.0 routing defect** (pyRevit issue #3092) where
-    correctly-shebanged CPython scripts run under **IronPython anyway**. Since this
-    plan's entire correctness argument rests on CPython being selected, add a
-    **runtime guard at the top of each `script.py`**: assert
-    `sys.implementation.name == 'cpython'` and, if not, bail with a pyRevit `forms`
-    alert — so a mis-route fails loudly instead of silently hitting stdlib/
-    `subprocess` differences. Pin/test against a pyRevit release not affected by
-    #3092, and make this a validation checkpoint for Ed.
+  - **There is no bundle.yaml CPython-version floor.** A `version:` key under
+    `engine:` is **silently ignored** — pyRevit's `engine` metadata block supports
+    only `clean` / `full_frame` / `persistent` / `mainthread` (plus Dynamo keys);
+    the only version-gating metadata is `min_revit_version` / `max_revit_version`,
+    which gate the **Revit year**, not the bundled CPython engine. There is **no**
+    metadata mechanism that refuses to run a script on a CPython older than X. So
+    the **only** enforcement of the 3.8 floor is the **CI py38 lint/test matrix**
+    (Section 6) — that, not bundle.yaml, is the real guard. Keep `clean` in the
+    engine block only if its actual semantics are wanted (it is an IronPython
+    scope-cleanup concept, largely inert under CPython). Button title/tooltip/
+    author may live either in `bundle.yaml` (chosen here, single-source) or as
+    top-of-script variables; `bundle.yaml` is the deliberate choice.
+  - **The in-Revit floor enforcer is a code guard, not metadata.** There is a known
+    **6.0.0 routing defect** (pyRevit issue #3092) where correctly-shebanged CPython
+    scripts run under **IronPython anyway**. Since this plan's entire correctness
+    argument rests on CPython being selected, add a **runtime guard at the top of
+    each `script.py`** that checks both the implementation **and** the version
+    floor: `if sys.implementation.name != 'cpython' or sys.version_info < (3, 8):
+    forms.alert(...); script.exit()` — so a mis-route **or** an unexpectedly-old
+    engine fails loudly instead of silently hitting stdlib/`subprocess`
+    differences. This code guard, in code where it can actually run, is the
+    in-Revit counterpart to the CI floor (bundle.yaml cannot do it). Pin/test
+    against a pyRevit release not affected by #3092, and make this a validation
+    checkpoint for Ed.
 - **Floorplan data-flow (the affine hand-off).** The schema *requires* per level
   a `floorplan` with `image`, `width_px`, `height_px`, and a 6-element
   `pixel_to_model` affine — and these originate in the live export, not device
   values. The hand-off, made explicit so three modules don't hand-wave it:
-  `revit_export` returns, per level, a record `(image_bytes_or_path, width_px,
-  height_px, pixel_to_model[6])` — it both **computes** the affine (from the
-  exported view crop box / scale) and carries the dimensions. `manifest_builder`
-  takes **both** the device dicts **and** these per-level floorplan records as
-  input. `bundle_io` writes the images to disk and writes the manifest
-  referencing **relative** image paths. (A device-only manifest is schema-INVALID
-  — `required: levels[].floorplan` — so the round-trip test fixture must include
+  `revit_export` returns, per level, a record `(image_bytes, basename, width_px,
+  height_px, pixel_to_model[6])` — in-memory **bytes** plus a **stable basename**
+  (resolve the `bytes`-vs-`path` either/or to bytes+basename, so there is no
+  ambiguity about who owns the file). It both **computes** the affine (from the
+  exported view crop box / scale) and carries the dimensions. **One place owns the
+  relative path:** `manifest_builder` takes the basenames and writes
+  `floorplan.image` as exactly that relative basename; `bundle_io` is the **sole
+  writer** and writes each image at exactly that relative path. The dict and the
+  on-disk layout therefore cannot diverge — important because `ingest` never
+  `stat`s the image, so a manifest referencing a path that does not exist surfaces
+  only late, at register/render. (A device-only manifest is schema-INVALID —
+  `required: levels[].floorplan` — so the round-trip test fixture must include
   floorplan records.)
 - **`manifest_builder.py`** — pure. Input: a list of plain device dicts (from
-  `revit_extract`) **and** the per-level floorplan records (from `revit_export`).
-  Output: a manifest dict matching `spec_manifest.schema.json`. No Revit imports.
+  `revit_extract`) **and** the per-level floorplan records (from `revit_export`);
+  it writes `floorplan.image` as the record's **relative basename** (the single
+  place the relative path is decided). Output: a manifest dict matching
+  `spec_manifest.schema.json`. No Revit imports.
   Stamps `default_tolerances` explicitly — **carry over the C# extractor values
   `position=0.25, mounting_height=0.083, orientation=10.0`** (these differ from
   the engine's own fallback `0.083/0.042/10.0`, applied only when a manifest
@@ -268,9 +328,10 @@ workflow + pre-commit `files` regex.)
   + schema validate, with floorplan records) **imports the engine**, so it is
   gated to the **3.10+ engine jobs**, not the floor jobs (same discipline as the
   writeback ratchet).
-- **`bundle_io.py`** — pure stdlib. Assemble the field-bundle directory (manifest
-  JSON + floorplan images written to disk, manifest referencing relative paths),
-  and read back the returned capture package. **Tested.**
+- **`bundle_io.py`** — pure stdlib. The **sole writer** of the field-bundle
+  directory: writes the manifest JSON and writes each floorplan image's bytes at
+  exactly the relative basename `manifest_builder` stamped (so dict and disk cannot
+  diverge), and reads back the returned capture package. **Tested.**
 - **`engine_runner.py`** — locate the `ca-elevation` CLI (explicit path → env var
   → bundled venv → PATH, ported from the C# `EngineLocator` order), then
   `subprocess.run` and read the report. Port details that are part of the
@@ -303,28 +364,42 @@ workflow + pre-commit `files` regex.)
     cases: the known-good fixture (exit 0), **and** a deliberately missing/
     schema-invalid manifest that asserts the runner reports a **validation
     (exit-1) failure with stderr surfaced** — the mocked unit tests alone never
-    prove the runner surfaces a real non-zero exit.
+    prove the runner surfaces a real non-zero exit. **exit-2 (crash) is not
+    drivable over a fixture deterministically**, so the 1-vs-2 discrimination is
+    covered by a **mocked unit test** (feed `engine_runner` a subprocess returning
+    `rc=2`, assert it surfaces as "crash"), **not** by the integration tier — state
+    this rather than implying the exit-code contract is fully integration-covered.
 - **`writeback.py`** — pure. Map verdict → override colour
-  (pass→green / flag→orange / absent→red / type_mismatch→purple), group device
-  results by element id for application. **The verdict→colour and grouping cases
+  (pass→green / flag→orange / absent→red / type_mismatch→purple; **unknown →
+  sentinel magenta + logged warning, never `KeyError`**), group device results by
+  element id for application. **The verdict→colour and grouping cases
   import no engine and run on the 3.8/3.9 floor jobs.** The **exhaustiveness
   ratchet** — `set(MAPPING) == set(ca_elevation_engine.models.Verdict)` — imports
   the engine, so it **cannot** sit in the floor bucket: on a 3.8/3.9 job with the
   engine uninstalled it would `ModuleNotFoundError` at collection and error the
-  whole module. Put it in a **separate test** (`test_writeback_ratchet.py`) marked
-  `@pytest.mark.engine` / `skipif sys.version_info < (3, 10)` so it runs only on
-  the 3.10+ engine jobs (or guard with `pytest.importorskip('ca_elevation_engine')`).
-  It is the same drift-guard pattern as
+  whole module. Put it in a **separate test** (`test_writeback_ratchet.py`) gated
+  by the `@pytest.mark.engine` marker / `skipif sys.version_info < (3, 10)` so it
+  runs only on the 3.10+ engine jobs. **Do not** gate it with
+  `pytest.importorskip('ca_elevation_engine')`: on the engine jobs the engine is a
+  **hard import** (Section 6) — importorskip would silently *skip* this gate if a
+  `pip install` regressed, converting an install failure into a false pass; the
+  version marker is the right primitive, reserved for keeping the test off the floor
+  jobs. It is the same drift-guard pattern as
   `engine/tests/test_registry.py::test_registry_verdicts_match_enum`, **but not at
   parity with it**: `test_registry` lives next to the enum and runs on every engine
   change; this lib ratchet runs only on the **pyrevit-extension** workflow's 3.10+
   jobs, and a verdict added under `engine/` triggers `engine.yml`, **not**
   `pyrevit-extension.yml` (path-filtered to `pyrevit-extension/**`) — so it can go
-  stale silently until something under `pyrevit-extension/` also changes. Either
-  add `engine/src/ca_elevation_engine/models.py` to `pyrevit-extension.yml`'s path
-  filter so a verdict change re-runs the lib ratchet, **or** treat the lib ratchet
-  as best-effort and keep `test_registry` as the authoritative verdict-completeness
-  gate. **State the choice; do not imply parity.**
+  stale silently until something under `pyrevit-extension/` also changes.
+  **Decision (Section 6): the lib ratchet is best-effort; `test_registry` stays the
+  authoritative enum-completeness gate.** Because that leaves a window where the
+  lib `MAPPING` can ship stale, `writeback.py` **must be raise-safe on an unmapped
+  verdict**: an unknown verdict maps to a loud **sentinel colour** (e.g. magenta)
+  and logs a warning, **never** `KeyError`s — a `KeyError` here would land inside a
+  Revit transaction on Ed's hardware, the worst place to discover a gap. The
+  ratchet then degrades from a hard gate to a fail-soft visual signal. (Not at
+  parity with `test_registry`, which lives next to the enum and runs on every
+  engine change — do not imply parity.)
 - **`revit_extract.py` / `revit_export.py` / `revit_writeback.py`** — the *only*
   modules that do `from Autodesk.Revit.DB import …` (inside functions, so the
   module still imports in CI). Each function is small and marked
@@ -356,11 +431,21 @@ assuming `report.pdf`.
     These **do NOT install the engine** (the hard gate is the engine's
     `requires-python>=3.10`; `pip install ./engine` errors before dependency
     resolution). This is what makes the 3.8 syntax floor *executable* rather than
-    asserted. **The split is per-assertion, not per-file**, and must be mechanical
-    so a new engine-importing assertion cannot accidentally land in the floor set:
+    asserted. **Pin the floor toolchain to 3.8-compatible versions** — engine's
+    pins (`pytest>=7.4`, `mypy>=1.8`, `ruff>=0.4`) are floors, not ceilings, and a
+    fresh resolve on a 3.8 runner can pull a pytest/ruff/mypy that itself requires
+    3.9+. Ship a capped `tests/requirements-floor.txt` so the floor job's
+    toolchain is reproducibly executable. **The split is per-assertion, not
+    per-file**, and must be mechanical so a new engine-importing assertion cannot
+    accidentally land in the floor set:
     - **Floor (3.8/3.9):** `bundle_io` round-trips; `engine_runner` locator/arg
       tests (mocked subprocess, no engine import); `writeback`'s verdict→colour
-      mapping + grouping; `lib/` import-smoke.
+      mapping + grouping; `lib/` import-smoke — which must **import (execute) every
+      `lib/` module**, since that is what catches a runtime PEP 604 re-evaluation
+      (a `get_type_hints()`/`dataclasses.fields()` call on a lib dataclass with an
+      `X | None` annotation) that ruff/mypy alone will not flag. Import-smoke
+      **imports modules only**; it never invokes the live `revit_*` functions
+      (their function-local `from Autodesk.Revit.DB import …` would `ImportError`).
     - **Engine-only (3.10+, marked `@pytest.mark.engine` / `skipif
       sys.version_info < (3,10)`):** `manifest_builder`'s `SpecManifest.from_dict`
       + schema-validate round-trip, and `writeback`'s `Verdict` exhaustiveness
@@ -368,18 +453,41 @@ assuming `report.pdf`.
       would `ModuleNotFoundError` at collection on the floor jobs. Enforce the gate
       in `conftest.py` (e.g. auto-skip engine-marked tests below 3.10) so the
       discipline is structural.
-  - **Engine jobs — Python 3.10/3.11/3.12:** install the engine (`pip install
-    ./engine[report]` on **all** 3.10+ jobs, matching `engine.yml`'s precedent and
-    with pip caching to keep the numpy build fast) and run the engine-importing
-    round-trip tests + `test_integration.py`. Installing `[report]` uniformly means
-    `--format pdf` produces `report.pdf` on every job, so `test_integration.py`
-    **asserts `report.pdf` exists** — no matrix-dependent pdf-vs-html flakiness.
-    (If instead you want to test the HTML fallback, run that one case in a job
-    *without* `[report]` and assert `report.html`; pin one, don't split by chance.)
+  - **Engine jobs — match `engine.yml`'s matrix (currently 3.10/3.11/3.12):** quote
+    it rather than hardcoding, so the two workflows cannot silently drift if the
+    engine repins. Install the engine on **all** these jobs with pip caching (to
+    keep the numpy build fast) and run the engine-importing round-trip tests +
+    `test_integration.py`. The lib's **own** pytest/ruff/mypy come from the lib's
+    `tests/pyproject.toml` dev deps (the lib does not need engine's `[dev]`); the
+    engine is installed only for the round-trip + integration imports, so the
+    command is `pip install <lib-test-deps> ./engine[report]` — the `[report]`
+    extra, **not** `engine.yml`'s `-e "engine[dev,report]"`, since `[dev]` is engine
+    tooling the lib doesn't reuse. **Make the engine a hard import on these jobs** —
+    assert
+    `import ca_elevation_engine` succeeds; do **not** use `pytest.importorskip`
+    here. importorskip would turn a silent `pip install` failure (wrong
+    interpreter, etc.) into a green-but-untested **skip** of the authoritative
+    round-trip and verdict-ratchet tests. Reserve skip semantics
+    (marker/`skipif < 3.10`) for keeping these tests *off the floor jobs* only.
+    Installing `[report]` uniformly means `--format pdf` produces `report.pdf` on
+    every job, so `test_integration.py` **asserts `report.pdf` exists** — no
+    matrix-dependent pdf-vs-html flakiness. (If instead you want to test the HTML
+    fallback, run that one case in a job *without* `[report]` and assert
+    `report.html`; pin one, don't split by chance.)
+  - **Verdict-ratchet ownership (decided):** the lib ratchet
+    (`test_writeback_ratchet.py`) is **best-effort** — `engine/tests/test_registry.py`
+    stays the authoritative enum-completeness gate. We do **not** add
+    `models.py` to this workflow's path filter; instead `writeback.py` is raise-safe
+    on an unmapped verdict (sentinel colour + warning, never `KeyError`), so a stale
+    `MAPPING` degrades to a loud visual signal rather than crashing inside a Revit
+    transaction (Section 4, `writeback.py`).
   - Unlike the dead C# job, this **actually runs** — but "**blocks**" also
-    requires adding `pyrevit-extension (py3.x)` to the repo's **required status
-    checks in branch protection** (a GitHub setting outside the YAML). Without
-    that step, "blocks" is aspirational.
+    requires registering the check in **branch protection** (a GitHub setting
+    outside the YAML). With a 3.8/3.9 floor matrix **plus** a 3.10/3.11/3.12 engine
+    matrix there are up to five distinct check names; rather than register every
+    leg, add a single `needs:`-fanin aggregator job (`pyrevit-extension / all-green`)
+    and make **that** the one required check. Without that step, "blocks" is
+    aspirational.
 - **Pre-commit** — extend ruff/mypy/pytest scope to the new lib (lib config at
   the py38 floor); drop the `dotnet format` hook (or keep, gated, only if the C#
   tree is retained).
@@ -422,9 +530,17 @@ clone URL / drop into the extensions dir." Four points for a conscious sign-off:
 - **Licensing — two boundaries, not one.** pyRevit is **GPL3**; our code stays
   **Apache-2.0**. The two artifacts sit on **opposite sides** of the derivative-
   work line and must not be analysed together:
-  - **Engine** — clearly **non-derivative**: a separate **out-of-process** CLI.
-    The FSF treats a subprocess/CLI-boundary plugin as borderline-but-generally-
-    non-derivative, and the engine is the easy end of that. No GPL3 reach.
+  - **Engine** — **non-derivative as a standalone CLI**: a separate
+    **out-of-process** process. The FSF treats a subprocess/CLI-boundary plugin as
+    borderline-but-generally-non-derivative, and the engine is the easy end of that
+    *in isolation*. **But for the commercial-bundle scenario this is not pre-cleared:**
+    in a shipped product the only thing that invokes the engine CLI is the GPL3-hosted
+    extension, and a **single installer shipping pyRevit + extension + engine venv
+    together** is exactly the aggregation-vs-combined-work fact pattern (intimacy of
+    communication, distributed/marketed as one program) counsel would scrutinize. So
+    Open item 2's counsel scope must include **how the three artifacts are packaged
+    and marketed together**, not just the extension in isolation — apply the same
+    caution here as to the extension; do not pre-decide the engine for the bundle case.
   - **Extension** — the **opposite** case. Its scripts are loaded by pyRevit's
     loader **into pyRevit's CPython runtime**, share its address space, and import
     its API (`forms`/`script`/`revit`/`__revit__` — this plan relies on exactly
@@ -459,9 +575,30 @@ clone URL / drop into the extensions dir." Four points for a conscious sign-off:
   own compatibility matrix — **plus** provision the engine venv (Open item 4)
   **plus** drop in the extension." design.md's first stated reason for C# (line
   81) was exactly that paying/free users would not have to install pyRevit first.
-  Be precise about the **delta**: the engine-venv provisioning was already required
-  under the C# design too, so the pivot's **incremental** friction is specifically
-  the **pyRevit install + per-Revit-year version matching**, not the venv step.
+  Be precise about the **delta** — and do **not** net out the venv step. Under C#,
+  the engine venv was a *future-automatable* step: `EngineLocator` resolution step 3
+  probes a venv bundled next to the add-in DLL (`./engine-venv/Scripts/...`), and
+  `revit-addin/README.md` states "a packaged installer can ship a bundled engine
+  venv" — i.e. the design.md signed installer would have **absorbed** venv
+  provisioning and made it invisible. Under pyRevit, the extension-manager / clone-
+  URL install has **no comparable hook** to silently provision a separate
+  Python ≥3.10 venv, so the venv becomes a **manual, user-facing** step with no
+  installer to hide it. The incremental friction is therefore **larger** than "just
+  pyRevit install + per-year matching": it is that **plus** hand-provisioning the
+  engine venv. This is load-bearing for **Open item 4** (settings storage / venv
+  location), which is not a minor config question but the central onboarding-friction
+  item.
+- **Adoption-ceiling cost to the #1 stated goal.** Beyond monetization, gating on
+  pyRevit narrows the **free-adoption funnel** — design.md's first-ranked objective
+  ("Open source, Apache-2.0. Adoption is the goal," line 34) — from all Revit users
+  to the **pyRevit-installing subset**, inheriting pyRevit's user base as the
+  ceiling rather than Revit's. It also collapses a distinction design.md drew
+  deliberately (lines 87–88): the standalone add-in was "a public, productized tool"
+  kept **separate** from Ed's internal pyRevit toolset; the pivot puts the public
+  product on the same distribution surface as the internal tooling. Accepted here
+  because the testability / real-product gain (Sections 1–2) is judged worth it —
+  but the trade is against design.md's *primary* goal, not only its commercial
+  rationale.
 - **Scope: desktop-only.** This pivot does **not** touch the iPhone capture app's
   App Store / Apple-IAP path (design.md Monetization, lines 264–293) — Revit
   add-ins ship on Windows and never go through any Apple store. The only
@@ -471,7 +608,10 @@ clone URL / drop into the extensions dir." Four points for a conscious sign-off:
 ## 9. Migration steps (when approved)
 
 1. Scaffold `pyrevit-extension/` tree (layout above), engine untouched.
-2. Implement the four real `lib` modules + their unit tests; get them green in CI.
+2. Implement the four real `lib` modules + their unit tests; get them green
+   **locally** (CI does not exist until step 5 — avoid the chicken/egg). If you
+   prefer "green in CI" literally true here, hoist a minimal `pyrevit-extension.yml`
+   skeleton (the two job groups) to step 1.
 3. Stub the three `revit_*` modules with `# LIVE` markers and clear TODOs.
 4. Wire the three `script.py` entries + `bundle.yaml` + placeholder icons.
 5. Add `pyrevit-extension.yml` (floor + engine job groups, path filter, branch-
@@ -494,8 +634,9 @@ clone URL / drop into the extensions dir." Four points for a conscious sign-off:
 
 1. **pyRevit version floor** (and therefore the bundled CPython the `lib/` code
    must support) — and which pinned pyRevit release this plan targets.
-   **Resolve before building** — it sets the lint floor and the `bundle.yaml`
-   engine constraint. *Recommendation:* CPython 3.8 as the `lib/` syntax target
+   **Resolve before building** — it sets the lint floor (there is no `bundle.yaml`
+   engine-version constraint to set; pyRevit has no such key — Section 4).
+   *Recommendation:* CPython 3.8 as the `lib/` syntax target
    (the oldest engine we may land on). Bundled-CPython by line: **4.8.x → 3.8;
    5.x → 3.11** (not 3.12); the **6.x** line is current — verify its engine
    version against the target release's `bin/cengines` before pinning.
@@ -510,7 +651,11 @@ clone URL / drop into the extensions dir." Four points for a conscious sign-off:
    load-bearing input to the retire decision. Tied to the licensing/monetization
    findings (Section 8), not merely "validated with real users."
 3. **Icons** — placeholder now, real artwork later.
-4. **Settings storage** — where the engine path / venv location is configured
-   (pyRevit config vs a repo-level settings file). Couples to the runtime-
-   validation UX (Section 3): a mis-located engine means no validation until a
-   full `run`.
+4. **Settings storage + engine-venv provisioning (load-bearing, not minor).**
+   Where the engine path / venv location is configured (pyRevit config vs a
+   repo-level settings file), **and how the user provisions the engine venv at all**
+   — pyRevit's install path has no installer hook to bundle it (Section 8), so this
+   is the central onboarding-friction question, not a config detail. Couples to the
+   runtime-validation UX (Section 3): a mis-located engine means no validation until
+   a full `run`. (Per-project write-back override state is **not** part of this item
+   — Section 2 uses an in-model marker, so no separate store is needed.)
