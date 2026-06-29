@@ -164,6 +164,8 @@ struct FloorplanPinCanvas: View {
     // Read-only multi-camera mode (CoverageView).
     var cameras: [CameraMarker] = []
 
+    @State private var planUIImage: UIImage?
+
     var body: some View {
         GeometryReader { geo in
             ZStack {
@@ -195,12 +197,21 @@ struct FloorplanPinCanvas: View {
                 pinPixel.wrappedValue = transform.pixel(fromDisplay: location)
             }
         }
+        // Load the plan off the main actor: it may be a dataless File Provider
+        // placeholder whose coordinated read can block. Pin/camera placement uses
+        // the manifest's pixel dimensions (not the loaded image), so the overlay
+        // math is correct even before the image arrives.
+        .task(id: level.id) {
+            guard let dir = bundleDirectory else { return }
+            let data = await FloorplanImage.loadData(level: level, bundleDirectory: dir)
+            planUIImage = data.flatMap(UIImage.init(data:))
+        }
     }
 
     @ViewBuilder
     private var planImage: some View {
-        if let dir = bundleDirectory, let image = FloorplanImage.load(level: level, bundleDirectory: dir) {
-            image.resizable().scaledToFit()
+        if let planUIImage {
+            Image(uiImage: planUIImage).resizable().scaledToFit()
         } else {
             Rectangle().fill(.quaternary)
                 .overlay(Image(systemName: "map").font(.largeTitle).foregroundStyle(.secondary))

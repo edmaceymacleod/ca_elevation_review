@@ -103,16 +103,23 @@ Revit add-in  --(field bundle: manifest.json + floorplans)-->  iPhone
 iPhone        --(capture package: capture.json + rgb/depth)-->  Revit add-in
 ```
 
-- **In:** receive a field-bundle *folder* by **AirDrop / Files / iCloud Drive**,
-  then `Open Bundle` in the app. The folder holds `manifest.json` (the spec
-  manifest) plus the floorplan images it references.
+- **In:** `Choose Folder` points the app at one **library root** — a folder
+  synced onto the phone (e.g. a **OneDrive** folder via iOS Files) that holds one
+  subfolder per project, each a field bundle (`manifest.json` + its floorplan
+  images). The app lists those projects with thumbnails (a true multi-project
+  picker) and remembers the chosen folder across launches via a security-scoped
+  bookmark. A one-off bundle can still be picked directly. Ad-hoc transfer
+  (AirDrop / Files / iCloud Drive) of a single bundle folder also works.
 - **Out:** after the walk, `Export` assembles a capture-package folder
   (`capture.json` + staged `shots/<id>/rgb.jpg` and `depth.f32`) and hands it to
   the iOS **share sheet** — AirDrop it back, drop it in iCloud/Files, or cable
-  it. The desktop add-in points the engine at that folder.
+  it. The desktop add-in points the engine at that folder. *(Writing the package
+  straight back into the OneDrive folder is the planned Phase 2 round-trip.)*
 
-Default transfer mechanism is still an open question in the design doc (AirDrop
-vs iCloud vs Files vs cable); the app supports all of them via the standard
+Files synced from a provider may be **dataless** (not downloaded yet): the app
+reads them through `NSFileCoordinator` (`Library/FileProviderAccess`) so they
+materialize on demand. The default transfer mechanism remains an open question in
+the design doc; the app supports a synced OneDrive root plus the standard
 importer/share sheet.
 
 ## Schema contract
