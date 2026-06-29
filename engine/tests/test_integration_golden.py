@@ -55,3 +55,39 @@ def test_pipeline_writes_reports(tmp_path, f01_manifest_path, f01_capture_path):
     assert (tmp_path / "verdict_report.json").exists()
     assert (tmp_path / "report.html").exists()
     assert "json" in result.written and "html" in result.written
+
+
+def test_pipeline_writes_pdf_by_default(tmp_path, f01_manifest_path, f01_capture_path):
+    pytest.importorskip("reportlab")
+    result = run_pipeline(
+        f01_manifest_path,
+        f01_capture_path,
+        generated_at=GENERATED_AT,
+        out_dir=tmp_path,
+    )
+    pdf = tmp_path / "report.pdf"
+    assert pdf.exists()
+    assert pdf.read_bytes().startswith(b"%PDF")
+    assert "pdf" in result.written
+
+
+def test_pipeline_falls_back_to_html_without_pdf_backend(
+    tmp_path, f01_manifest_path, f01_capture_path, monkeypatch
+):
+    # Simulate the PDF backend being unavailable.
+    from ca_elevation_engine.report import pdf as pdf_mod
+
+    def _boom(*args, **kwargs):
+        raise pdf_mod.MissingPdfBackend("no reportlab")
+
+    monkeypatch.setattr(pdf_mod, "render_pdf", _boom)
+    result = run_pipeline(
+        f01_manifest_path,
+        f01_capture_path,
+        generated_at=GENERATED_AT,
+        out_dir=tmp_path,
+        report_format="pdf",
+    )
+    assert (tmp_path / "report.html").exists()
+    assert not (tmp_path / "report.pdf").exists()
+    assert any("Falling back to HTML" in w for w in result.warnings)

@@ -29,7 +29,9 @@ def test_run_writes_report_and_exits_zero(tmp_path, f01_manifest_path, f01_captu
     assert code == 0
     report = json.loads((out / "verdict_report.json").read_text())
     assert report["summary"]["total"] == 5
-    assert (out / "report.html").exists()
+    # Default format is PDF (reportlab is a CI/[report] dependency).
+    assert (out / "report.pdf").exists()
+    assert (out / "report.pdf").read_bytes().startswith(b"%PDF")
     captured = capsys.readouterr()
     assert "PASS" in captured.out  # text summary
 

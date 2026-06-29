@@ -48,7 +48,8 @@ That is what this repo builds.
 - **`revit-addin/`** -- C# .NET add-in. The desktop front door: extracts the spec
   manifest from the live model, exports floorplans, invokes the engine
   out-of-process, writes verdicts back into the model, opens the report. Build
-  target: **Windows**.
+  target: **Windows**. Supported Revit years: **2024-2027** (2024 on `net48`;
+  2025/2026/2027 on `net8.0-windows`).
 - **`ios-app/`** -- Swift / SwiftUI / ARKit field client + the pure
   `CaElevationKit` SwiftPM library. Deliberately thin: pin a location + heading,
   capture RGB + LiDAR depth + ARKit pose, package, export. No analysis logic.
@@ -81,10 +82,14 @@ Revit or an iPhone.
 pip install -e "engine[dev,report]"
 
 # Run the verification pipeline over a manifest + capture package.
+# --out is a directory: it receives verdict_report.json plus a rendered report.
 ca-elevation run \
     --manifest path/to/spec.manifest.json \
     --capture  path/to/site.capture.json \
-    --out      path/to/verdict.report.json
+    --out      path/to/output_dir
+# Primary deliverable is a PDF (report.pdf). Use --format html|json to switch;
+# PDF needs the optional 'reportlab' backend (included in the [report] extra)
+# and falls back to a self-contained HTML report if it is unavailable.
 ```
 
 Heavy native backends (Open3D / pye57 / OpenCV) are an optional extra -- install

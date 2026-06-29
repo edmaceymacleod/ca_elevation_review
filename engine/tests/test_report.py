@@ -293,4 +293,4 @@ def test_summarize_all_pass():
 def test_unsupported_format_raises(tmp_path):
     report, manifest, capture = _report(), _manifest(), _capture()
     with pytest.raises(ValueError):
-        render_report(report, manifest, capture, str(tmp_path / "x.pdf"), fmt="pdf")
+        render_report(report, manifest, capture, str(tmp_path / "x.docx"), fmt="docx")

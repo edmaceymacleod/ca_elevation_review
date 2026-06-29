@@ -45,7 +45,7 @@ def run_pipeline(
     bundle_dir: str | None = None,
     generated_at: str | None = None,
     out_dir: str | Path | None = None,
-    report_format: str = "html",
+    report_format: str = "pdf",
     validate: bool = True,
 ) -> PipelineResult:
     """Run the full verification pipeline.
@@ -88,9 +88,19 @@ def run_pipeline(
         written["json"] = str(json_path)
 
         if report_format and report_format != "json":
-            ext = "html" if report_format == "html" else report_format
-            rendered = out / f"report.{ext}"
-            render_report(report, manifest, capture, str(rendered), fmt=report_format)
-            written[report_format] = str(rendered)
+            from .report import MissingPdfBackend
+
+            fmt = report_format
+            try:
+                rendered = out / f"report.{fmt}"
+                render_report(report, manifest, capture, str(rendered), fmt=fmt)
+                written[fmt] = str(rendered)
+            except MissingPdfBackend as exc:
+                # Don't fail the run if the PDF backend is absent: fall back to a
+                # self-contained HTML report and tell the caller why.
+                warnings.append(f"{exc} Falling back to HTML report.")
+                rendered = out / "report.html"
+                render_report(report, manifest, capture, str(rendered), fmt="html")
+                written["html"] = str(rendered)
 
     return PipelineResult(report=report, matches=matches, warnings=warnings, written=written)

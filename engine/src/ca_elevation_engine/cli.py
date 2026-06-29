@@ -3,7 +3,7 @@
 This is the entry point the Revit add-in invokes out-of-process. Keep the
 surface small and stable:
 
-    ca-elevation run      --manifest M --capture C --out DIR [--format html|json|pdf]
+    ca-elevation run      --manifest M --capture C --out DIR [--format pdf|html|json]
     ca-elevation validate --manifest M [--capture C]
     ca-elevation schema   (spec_manifest|capture_package|verdict_report)
 
@@ -37,9 +37,10 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--out", required=True, help="output directory for the report")
     run.add_argument(
         "--format",
-        default="html",
-        choices=["html", "json", "pdf"],
-        help="rendered report format (verdict_report.json is always written)",
+        default="pdf",
+        choices=["pdf", "html", "json"],
+        help="rendered report format (default pdf; verdict_report.json is always written). "
+        "pdf needs the optional 'reportlab' backend and falls back to html if absent",
     )
     run.add_argument("--bundle-dir", default=None, help="root dir for referenced bundle assets")
     run.add_argument(

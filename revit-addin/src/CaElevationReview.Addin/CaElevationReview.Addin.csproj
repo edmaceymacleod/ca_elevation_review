@@ -3,16 +3,18 @@
   <!--
     CA Elevation Review - Revit add-in.
 
-    Multi-targeted so a single build covers the supported Revit years:
-      * net48          -> Revit 2024 and 2025 run on .NET Framework 4.8
-      * net8.0-windows -> Revit 2026 runs on .NET 8 (Windows desktop)
+    Supported Revit years: 2024, 2025, 2026, 2027.
+
+    Multi-targeted so a single build covers the supported Revit runtimes:
+      * net48          -> Revit 2024 runs on .NET Framework 4.8
+      * net8.0-windows -> Revit 2025 / 2026 / 2027 run on .NET 8 (Windows desktop)
 
     Revit's own runtime decides which TFM is loaded; we ship both DLLs and let
     the .addin manifest point at the right one per install (see README).
 
     The $(RevitVersion) property selects which Revit API reference assemblies to
     bind against. Override it on the command line, e.g.:
-      dotnet build -c Release -p:RevitVersion=2025
+      dotnet build -c Release -p:RevitVersion=2027
     or set it per-TFM below. $(RevitApiDir) must point at the local Revit
     install that owns RevitAPI.dll / RevitAPIUI.dll (NOT redistributable; never
     commit them, never set <Private>true</Private>).
@@ -41,11 +43,13 @@
   </PropertyGroup>
 
   <!--
-    Default Revit version per TFM. Revit 2024/2025 == net48, Revit 2026 == net8.
-    These defaults are only used when $(RevitVersion) is not passed in.
+    Default Revit version per TFM. Revit 2024 == net48; Revit 2025/2026/2027 ==
+    net8. These defaults are only used when $(RevitVersion) is not passed in.
+    Build a specific year with, e.g. -p:RevitVersion=2027 (net8) or
+    -p:RevitVersion=2024 (net48).
   -->
   <PropertyGroup Condition="'$(TargetFramework)' == 'net48' and '$(RevitVersion)' == ''">
-    <RevitVersion>2025</RevitVersion>
+    <RevitVersion>2024</RevitVersion>
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows' and '$(RevitVersion)' == ''">
     <RevitVersion>2026</RevitVersion>

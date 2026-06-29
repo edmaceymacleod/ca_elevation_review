@@ -38,13 +38,15 @@ Multi-targeted so one build covers the supported years:
 | Revit year | .NET runtime      | TFM               |
 |------------|-------------------|-------------------|
 | 2024       | .NET Framework 4.8| `net48`           |
-| 2025       | .NET Framework 4.8| `net48`           |
+| 2025       | .NET 8 (Windows)  | `net8.0-windows`  |
 | 2026       | .NET 8 (Windows)  | `net8.0-windows`  |
+| 2027       | .NET 8 (Windows)  | `net8.0-windows`  |
 
 The project file multi-targets `net48;net8.0-windows`. A `RevitVersion` MSBuild property
-selects which Revit API reference assemblies to bind against (defaulting to 2025 for
+selects which Revit API reference assemblies to bind against (defaulting to 2024 for
 `net48`, 2026 for `net8.0-windows`), and defines a `REVIT20xx` compile symbol so
-platform-coupled code can branch on API differences per year.
+platform-coupled code can branch on API differences per year. Build any year in range with
+`-p:RevitVersion=<year>` (2024 on `net48`; 2025/2026/2027 on `net8.0-windows`).
 
 ## Building
 
@@ -65,15 +67,15 @@ your local install via the `RevitApiDir` MSBuild property (default
 Revit's own and crash the add-in).
 
 ```powershell
-# Build for Revit 2025 (net48):
+# Build for Revit 2024 (net48):
 dotnet build src\CaElevationReview.Addin\CaElevationReview.Addin.csproj `
-  -c Release -f net48 -p:RevitVersion=2025 `
-  -p:RevitApiDir="C:\Program Files\Autodesk\Revit 2025"
+  -c Release -f net48 -p:RevitVersion=2024 `
+  -p:RevitApiDir="C:\Program Files\Autodesk\Revit 2024"
 
-# Build for Revit 2026 (.NET 8):
+# Build for Revit 2027 (.NET 8):
 dotnet build src\CaElevationReview.Addin\CaElevationReview.Addin.csproj `
-  -c Release -f net8.0-windows -p:RevitVersion=2026 `
-  -p:RevitApiDir="C:\Program Files\Autodesk\Revit 2026"
+  -c Release -f net8.0-windows -p:RevitVersion=2027 `
+  -p:RevitApiDir="C:\Program Files\Autodesk\Revit 2027"
 ```
 
 ### Install into Revit
