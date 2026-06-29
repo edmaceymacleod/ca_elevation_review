@@ -18,8 +18,18 @@
 //
 
 import Foundation
+#if canImport(OSLog)
+import OSLog
+#endif
 
 enum FileProviderAccess {
+    /// Raised when `NSFileCoordinator` returns without an error yet never ran the
+    /// accessor block — so there is no result to return. Surfacing it lets the
+    /// caller fall back to an error state instead of trapping.
+    enum CoordinationError: Error {
+        case noResult
+    }
+
     /// Coordinated read of a file's bytes, materializing it if dataless.
     ///
     /// Runs the `NSFileCoordinator` accessor synchronously on the calling thread;
@@ -28,18 +38,6 @@ enum FileProviderAccess {
     static func readData(at url: URL) throws -> Data {
         try coordinatedRead(at: url) { resolved in
             try Data(contentsOf: resolved)
-        }
-    }
-
-    /// Coordinated directory listing, giving the provider a chance to enumerate
-    /// children before we read them. Returns the contained URLs (one level).
-    static func contentsOfDirectory(at url: URL) throws -> [URL] {
-        try coordinatedRead(at: url) { resolved in
-            try FileManager.default.contentsOfDirectory(
-                at: resolved,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            )
         }
     }
 
@@ -55,8 +53,23 @@ enum FileProviderAccess {
             result = Result { try accessor(resolved) }
         }
 
-        if let coordinatorError { throw coordinatorError }
-        // `result` is always set when no coordinator error occurred.
-        return try result!.get()
+        if let coordinatorError {
+            log("coordination failed for \(url.lastPathComponent): \(coordinatorError.localizedDescription)")
+            throw coordinatorError
+        }
+        guard let result else {
+            log("coordination produced no result for \(url.lastPathComponent)")
+            throw CoordinationError.noResult
+        }
+        if case .failure(let error) = result {
+            log("read failed for \(url.lastPathComponent): \(error.localizedDescription)")
+        }
+        return try result.get()
+    }
+
+    private static func log(_ message: String) {
+        #if canImport(OSLog)
+        Log.bundle.error("FileProviderAccess: \(message, privacy: .public)")
+        #endif
     }
 }

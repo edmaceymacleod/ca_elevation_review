@@ -38,11 +38,15 @@ struct LevelListView: View {
     }
 }
 
-/// A single level row with a floorplan thumbnail and expected-device count.
+/// A single level row with a floorplan thumbnail and expected-device count. The
+/// thumbnail loads off the main actor (the floorplan may be a dataless File
+/// Provider placeholder whose coordinated read can block), so the row renders a
+/// placeholder until the image arrives instead of freezing the list.
 private struct LevelRow: View {
     let level: Level
     let bundleDirectory: URL?
     let deviceCount: Int
+    @State private var image: UIImage?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -56,13 +60,17 @@ private struct LevelRow: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .task(id: level.id) {
+            guard let dir = bundleDirectory else { return }
+            let data = await FloorplanImage.loadData(level: level, bundleDirectory: dir)
+            image = data.flatMap(UIImage.init(data:))
+        }
     }
 
     @ViewBuilder
     private var thumbnail: some View {
-        if let dir = bundleDirectory,
-           let image = FloorplanImage.load(level: level, bundleDirectory: dir) {
-            image.resizable().scaledToFill()
+        if let image {
+            Image(uiImage: image).resizable().scaledToFill()
         } else {
             RoundedRectangle(cornerRadius: 8)
                 .fill(.quaternary)

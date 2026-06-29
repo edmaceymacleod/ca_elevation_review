@@ -19,6 +19,7 @@ struct ProjectListView: View {
     @Environment(ProjectLibrary.self) private var library
     @State private var isImporting = false
     @State private var selectedProject: ProjectEntry?
+    @State private var openError: String?
 
     var body: some View {
         NavigationStack {
@@ -41,6 +42,11 @@ struct ProjectListView: View {
                 }
                 .task { await library.restoreSavedRoot() }
                 .refreshable { await library.refresh() }
+                .alert("Couldn't open project", isPresented: .constant(openError != nil)) {
+                    Button("OK") { openError = nil }
+                } message: {
+                    Text(openError ?? "")
+                }
         }
     }
 
@@ -129,14 +135,16 @@ struct ProjectListView: View {
 
     private func openProject(_ project: ProjectEntry) {
         do {
-            // The project's manifest is already decoded; loadBundle re-reads it
-            // and prepares a fresh capture/export session for this project.
-            try session.loadBundle(at: project.url)
+            // The project's manifest is already decoded by the library scan, so
+            // pass it straight through (no redundant re-read) and prepare a fresh
+            // capture/export session for this project.
+            try session.loadBundle(project.manifest, at: project.url)
             selectedProject = project
         } catch {
             #if canImport(OSLog)
             Log.bundle.error("Failed to open project: \(error.localizedDescription, privacy: .public)")
             #endif
+            openError = "Couldn't start a capture session for \(project.name). \(error.localizedDescription)"
         }
     }
 
@@ -151,6 +159,7 @@ struct ProjectListView: View {
 /// every project's floorplan up front.
 private struct ProjectRow: View {
     @Environment(ProjectLibrary.self) private var library
+    @Environment(\.displayScale) private var displayScale
     let project: ProjectEntry
     @State private var thumbnail: UIImage?
 
@@ -171,8 +180,11 @@ private struct ProjectRow: View {
                 .foregroundStyle(.tertiary)
         }
         .contentShape(Rectangle())
-        .task(id: project.id) {
-            thumbnail = await library.thumbnail(for: project, scale: UIScreen.main.scale)
+        // Re-key on the library generation so a pull-to-refresh (which clears the
+        // thumbnail cache) regenerates the image — otherwise a re-synced floorplan
+        // would keep showing the stale thumbnail.
+        .task(id: ThumbnailTaskID(url: project.id, generation: library.generation)) {
+            thumbnail = await library.thumbnail(for: project, scale: displayScale)
         }
     }
 
@@ -186,4 +198,11 @@ private struct ProjectRow: View {
                 .overlay(Image(systemName: "map").foregroundStyle(.secondary))
         }
     }
+}
+
+/// Identity for a project row's thumbnail `.task`: the project plus the library
+/// generation, so the task re-runs when the library is refreshed.
+private struct ThumbnailTaskID: Equatable {
+    let url: URL
+    let generation: Int
 }

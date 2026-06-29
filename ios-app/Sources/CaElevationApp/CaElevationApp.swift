@@ -54,9 +54,14 @@ final class CaptureSessionModel: ObservableObject {
     /// never leak in from a previously loaded project.
     @Published private(set) var exportDirectory: URL?
 
-    /// Load and decode a field bundle directory (step 1).
-    func loadBundle(at directory: URL) throws {
-        let manifest = try BundleIO.readManifest(from: directory)
+    /// Open a project for capture (step 1).
+    ///
+    /// The manifest is passed in already decoded — `ProjectLibrary` decodes it
+    /// through a coordinated (File Provider-aware) read when listing projects, so
+    /// re-reading it here would be a redundant *uncoordinated* read that can fail
+    /// on a dataless placeholder. Floorplan images are NOT validated here either;
+    /// they load lazily (and materialize on demand) when a level is opened.
+    func loadBundle(_ manifest: SpecManifest, at directory: URL) throws {
         self.manifest = manifest
         self.bundleDirectory = directory
         self.selectedLevel = manifest.levels.first

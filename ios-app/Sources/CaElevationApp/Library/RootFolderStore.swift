@@ -34,7 +34,15 @@ enum RootFolderStore {
     }
 
     /// Persist a bookmark to `url` so the chosen root survives app launches.
+    ///
+    /// The security scope must be **active while the bookmark is created**, or on
+    /// iOS the bookmark can fail to create or resolve later (so the chosen folder
+    /// would be forgotten on the next launch). We start/stop access transiently
+    /// here; this is reference-counted, so it composes with a longer-lived scope
+    /// the caller may already hold on the same URL.
     static func save(_ url: URL, defaults: UserDefaults = .standard) throws {
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
         let data = try url.bookmarkData(
             options: [],
             includingResourceValuesForKeys: nil,

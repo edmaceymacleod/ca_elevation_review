@@ -52,6 +52,10 @@ final class ProjectLibrary {
     private(set) var projects: [ProjectEntry] = []
     private(set) var state: State = .needsRoot
 
+    /// Bumped on each refresh so views can re-key caches/`.task`s to the latest
+    /// scan (e.g. regenerate thumbnails after a re-synced floorplan changes).
+    private(set) var generation = 0
+
     /// Per-project floorplan thumbnails, keyed by bundle directory URL.
     var thumbnailCache: [URL: UIImage] = [:]
 
@@ -102,6 +106,15 @@ final class ProjectLibrary {
         releaseScope()
         if url.startAccessingSecurityScopedResource() {
             scopedURL = url
+        } else {
+            // Some providers/local URLs don't require a scope and return false
+            // legitimately, so this isn't fatal — but log it, because a genuine
+            // failure to acquire the grant shows up later as unreadable children.
+            #if canImport(OSLog)
+            Log.bundle.warning(
+                "Security scope not acquired for \(url.lastPathComponent, privacy: .public); reads may fail"
+            )
+            #endif
         }
         root = url
         await refresh()
@@ -120,6 +133,10 @@ final class ProjectLibrary {
     func refresh() async {
         guard let root else { state = .needsRoot; return }
         state = .loading
+        // New scan: drop cached thumbnails and bump the generation so rows
+        // regenerate against the freshly-synced files.
+        thumbnailCache = [:]
+        generation += 1
         do {
             let entries = try await Task.detached(priority: .userInitiated) {
                 try Self.scan(root: root)
@@ -139,17 +156,27 @@ final class ProjectLibrary {
     /// are NOT validated/materialized here — listing must stay cheap; thumbnails
     /// and images download lazily when a row appears or a project is opened.
     nonisolated private static func scan(root: URL) throws -> [ProjectEntry] {
+        // Coordinate the root so the provider enumerates its children, but list
+        // the captured `root` (not the coordinator's substituted URL): the child
+        // URLs must stay valid for the per-manifest reads below, which happen
+        // after this coordination block ends.
         let bundleURLs = try FileProviderAccess.coordinatedRead(at: root) { _ in
             try BundleIO.findBundles(in: root)
         }
         let decoder = BundleIO.makeDecoder()
         return bundleURLs.compactMap { url in
             let manifestURL = url.appendingPathComponent(BundleIO.manifestFileName)
-            guard let data = try? FileProviderAccess.readData(at: manifestURL),
-                  let manifest = try? decoder.decode(SpecManifest.self, from: data) else {
+            do {
+                let data = try FileProviderAccess.readData(at: manifestURL)
+                return ProjectEntry(url: url, manifest: try decoder.decode(SpecManifest.self, from: data))
+            } catch {
+                #if canImport(OSLog)
+                Log.bundle.error(
+                    "Skipping \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+                #endif
                 return nil
             }
-            return ProjectEntry(url: url, manifest: manifest)
         }
     }
 
