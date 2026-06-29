@@ -200,6 +200,9 @@ jobs:
         with:
           name: swiftlint-baseline
           path: ios-app/.swiftlint-baseline.json
+          # The baseline is a dotfile; upload-artifact@v4 skips hidden files by
+          # default, which silently dropped it on the first bootstrap run.
+          include-hidden-files: true
           if-no-files-found: ignore
 
   # --- iOS: build the actual App target so actool compiles the asset catalog --
