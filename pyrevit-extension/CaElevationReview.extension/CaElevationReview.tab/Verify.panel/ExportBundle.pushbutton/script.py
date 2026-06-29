@@ -42,8 +42,47 @@ def main():
 
     # LIVE (Ed's hardware): walk the model + export floorplans.
     project = revit_extract.extract_project(doc)
-    floorplans = revit_export.export_floorplans(doc, level_ids=[])  # TODO: level picker UI
-    devices = revit_extract.extract_devices(doc, level_lookup={})
+
+    # Level picker. Revit imports stay function-local so the module imports
+    # cleanly under CPython in CI; the compat shim stringifies level ids the same
+    # way revit_export / revit_extract do, so the three agree on level identity.
+    from Autodesk.Revit.DB import FilteredElementCollector, Level
+
+    from ca_elevation_revit._compat import eid_value, element_name
+
+    levels = sorted(
+        FilteredElementCollector(doc).OfClass(Level),
+        key=lambda lv: lv.Elevation,
+    )
+    if not levels:
+        forms.alert("No levels found in this model.", title="CA Elevation Review")
+        return
+
+    # SelectFromList shows strings, so keep a display-name -> Level map. Suffix the
+    # element id when two levels share a name so the mapping stays one-to-one.
+    name_to_level = {}
+    for lv in levels:
+        name = element_name(lv)
+        if name in name_to_level:
+            name = "{} (#{})".format(name, eid_value(lv.Id))
+        name_to_level[name] = lv
+
+    # Multiselect, every level checked by default; closing the dialog cancels.
+    picked = forms.SelectFromList.show(
+        [forms.TemplateListItem(name, checked=True) for name in name_to_level],
+        title="Select levels to export",
+        button_name="Export",
+        multiselect=True,
+    )
+    if not picked:
+        return  # user cancelled or selected nothing -> write nothing
+
+    chosen_levels = [name_to_level[name] for name in picked]
+    level_id_strs = [str(eid_value(lv.Id)) for lv in chosen_levels]
+    level_lookup = {eid_value(lv.Id): str(eid_value(lv.Id)) for lv in chosen_levels}
+
+    floorplans = revit_export.export_floorplans(doc, level_ids=level_id_strs)
+    devices = revit_extract.extract_devices(doc, level_lookup=level_lookup)
 
     # PURE (CI-tested): assemble + write the bundle.
     manifest = manifest_builder.build_manifest(project, floorplans, devices)
