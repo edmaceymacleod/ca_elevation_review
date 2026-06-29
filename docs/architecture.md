@@ -24,8 +24,17 @@ behind each decision, read `design.md`; for the payload schemas read
 | Component | Path | Language | Role | Build target |
 |---|---|---|---|---|
 | Engine | `engine/` | Python 3.10+ | The OSS core: ingest -> register -> compare -> verdict -> report | Linux |
-| Revit add-in | `revit-addin/` | C# / .NET | Spec source, engine invoker, result sink | Windows |
+| Revit front door | `pyrevit-extension/` | Python (pyRevit CPython) | Spec source, engine invoker (out-of-process), result sink | Windows |
+| Revit add-in (legacy) | `revit-addin/` | C# / .NET | The original front door; kept one cycle, CI-gated off, pending live validation | Windows |
 | iPhone app | `ios-app/` | Swift / SwiftUI / ARKit | Thin field capture client | macOS |
+
+> **Front-door pivot:** the Revit front door moved from the standalone C# add-in
+> to a **pyRevit extension** (`pyrevit-extension/`) so the manifest-assembly /
+> bundle-IO / engine-invocation / verdict-mapping logic becomes real, CI-tested
+> CPython instead of untestable C#. The engine is unchanged and still invoked
+> out-of-process. The C# `revit-addin/` is retained one cycle (it is the only
+> artifact preserving a signed-installer / closed-tier commercial option). See
+> [`pyrevit-migration-plan.md`](pyrevit-migration-plan.md).
 
 - **Engine** is independently runnable and headlessly testable. Heavy native
   backends (Open3D / pye57 / OpenCV / a vision model) are optional extras, loaded

@@ -40,6 +40,15 @@ repos:
       - id: ruff-format
         name: ruff format (engine)
         files: ^engine/
+      # pyRevit extension lib: same ruff, at the py38 floor via its own config.
+      - id: ruff
+        name: ruff (lint, pyrevit-extension @py38)
+        args: ["--fix", "--config", "pyrevit-extension/tests/pyproject.toml"]
+        files: ^pyrevit-extension/
+      - id: ruff-format
+        name: ruff format (pyrevit-extension)
+        args: ["--config", "pyrevit-extension/tests/pyproject.toml"]
+        files: ^pyrevit-extension/
 
   # ---- Secret scanning (fast, default stage) -----------------------------
   - repo: https://github.com/gitleaks/gitleaks

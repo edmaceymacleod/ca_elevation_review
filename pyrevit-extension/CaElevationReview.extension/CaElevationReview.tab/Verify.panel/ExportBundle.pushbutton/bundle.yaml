@@ -1,0 +1,5 @@
+title: Export\nField Bundle
+tooltip: >-
+  Extract the spec manifest + floorplans for the selected levels and write a
+  field bundle to hand to the iPhone capture app.
+author: Sterling

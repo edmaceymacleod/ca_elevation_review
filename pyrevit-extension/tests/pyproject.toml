@@ -1,0 +1,36 @@
+# Lib-only tooling config for the pyRevit extension. Deliberately separate from
+# engine/pyproject.toml: the in-Revit lib targets Python 3.8 (the oldest pyRevit
+# CPython we may land on), NOT the engine's py310 -- so 3.10-only syntax is caught
+# here before it reaches Ed's hardware-gated Revit install.
+#
+# Run pytest from this directory (`cd pyrevit-extension/tests && pytest`) so the
+# pythonpath below puts the extension lib on sys.path. Lint/type the lib with
+# `ruff check --config tests/pyproject.toml <lib> <tests>` /
+# `mypy --config-file tests/pyproject.toml <lib>`.
+
+[tool.pytest.ini_options]
+# pyRevit puts lib/ on sys.path at runtime; in CI nothing does unless we say so.
+pythonpath = ["../CaElevationReview.extension/lib"]
+testpaths = ["."]
+markers = [
+    "engine: requires the ca_elevation_engine package; runs only on the 3.10+ jobs",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+src = ["../CaElevationReview.extension/lib", "."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]
+# The lib deliberately uses explicit typing.* forms (Dict/List/Optional) for
+# unambiguous Python 3.8 runtime compatibility. The typing-modernization rules
+# would push toward `dict[...]` / `X | None`, whose 3.8 safety relies on
+# `from __future__ import annotations` stringization -- we keep the explicit
+# forms instead so nothing depends on that subtlety (esp. runtime type aliases).
+ignore = ["UP006", "UP007", "UP035", "UP045"]
+
+[tool.mypy]
+python_version = "3.8"
+ignore_missing_imports = true
+warn_unused_ignores = true
