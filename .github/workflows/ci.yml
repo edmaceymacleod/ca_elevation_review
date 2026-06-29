@@ -173,6 +173,11 @@ jobs:
       - name: swift test
         working-directory: ios-app
         run: swift test
+      # SwiftLint is not preinstalled on current macos-latest images, so install
+      # it explicitly -- otherwise the gating step below fails with
+      # "swiftlint: command not found" and the baseline can never bootstrap.
+      - name: Install SwiftLint
+        run: brew install swiftlint
       # SwiftLint now GATES. Pre-existing violations are absorbed by a committed
       # baseline (ios-app/.swiftlint-baseline.json); only NEW violations fail the
       # job. Bootstrap: when the baseline is missing, the step generates one,
