@@ -68,6 +68,21 @@ A living list. When a platform-specific surprise costs you time, add it here.
   than `capturedImage`; carry `depth_size` separately, never assume they align.
 - **`Affine` det epsilon is `1e-12`** — matches the engine; don't use `!= 0`
   (near-singular affines must be rejected identically on both sides).
+- **File Provider files can be dataless** — a floorplan/manifest synced from
+  OneDrive (or any provider) into iOS Files may be a placeholder with no bytes on
+  disk yet. `UIImage(contentsOfFile:)` / `Data(contentsOf:)` on a raw path do
+  **NOT** trigger a download — they read whatever is local and silently
+  return nil/partial. Route provider reads through `NSFileCoordinator`
+  (`FileProviderAccess` in `Library/`), which materializes the item first.
+- **No reliable "is it downloaded?" API for third-party providers** —
+  `URLResourceKey.ubiquitousItemDownloadingStatusKey` is iCloud-only and absent
+  for OneDrive. Don't poll status; always do a coordinated read and show a
+  spinner while it materializes.
+- **iOS folder bookmarks need no entitlement** — folders picked via
+  `.fileImporter` are re-accessed with `bookmarkData(options: [])` /
+  `resolvingBookmarkData(options: [])`. `.withSecurityScope` and
+  `com.apple.security.files.bookmarks.*` are **macOS App Sandbox** concepts;
+  `.withSecurityScope` throws on iOS. Don't copy macOS sample code (`RootFolderStore`).
 
 ## Architecture (do not blur this line)
 

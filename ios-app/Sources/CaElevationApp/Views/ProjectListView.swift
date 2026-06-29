@@ -2,130 +2,184 @@
 //  ProjectListView.swift
 //  CaElevationApp
 //
-//  Field flow steps 1-2: open a field bundle (received by AirDrop / Files /
-//  iCloud) and pick a level / floorplan thumbnail to capture on.
+//  Field flow step 1: the multi-project picker. The user points the app at one
+//  library root — a folder synced onto the phone by OneDrive (or any provider in
+//  iOS Files) that holds one subfolder per project. We list those bundles with a
+//  thumbnail; tapping one loads it and pushes the level list -> capture.
+//
+//  The chosen root is remembered across launches (RootFolderStore), so after the
+//  first pick the app opens straight to the project list.
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 import CaElevationKit
 
 struct ProjectListView: View {
     @EnvironmentObject private var session: CaptureSessionModel
+    @Environment(ProjectLibrary.self) private var library
     @State private var isImporting = false
-    @State private var loadError: String?
+    @State private var selectedProject: ProjectEntry?
 
     var body: some View {
         NavigationStack {
-            Group {
-                if let manifest = session.manifest {
-                    levelList(manifest)
-                } else {
-                    emptyState
+            content
+                .navigationTitle("CA Elevation Review")
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Choose Folder") { isImporting = true }
+                    }
                 }
-            }
-            .navigationTitle("CA Elevation Review")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Open Bundle") { isImporting = true }
+                .navigationDestination(item: $selectedProject) { project in
+                    LevelListView(manifest: project.manifest)
                 }
-            }
-            .fileImporter(
-                isPresented: $isImporting,
-                allowedContentTypes: [.folder],
-                allowsMultipleSelection: false
-            ) { result in
-                handleImport(result)
-            }
-            .alert("Could not load bundle", isPresented: .constant(loadError != nil)) {
-                Button("OK") { loadError = nil }
-            } message: {
-                Text(loadError ?? "")
-            }
+                .fileImporter(
+                    isPresented: $isImporting,
+                    allowedContentTypes: [.folder],
+                    allowsMultipleSelection: false
+                ) { result in
+                    handleImport(result)
+                }
+                .task { await library.restoreSavedRoot() }
+                .refreshable { await library.refresh() }
         }
     }
 
     // MARK: - Subviews
 
+    @ViewBuilder
+    private var content: some View {
+        switch library.state {
+        case .needsRoot:
+            emptyState
+        case .loading:
+            ProgressView("Loading projects…")
+        case .failed(let message):
+            errorState(message)
+        case .loaded:
+            if library.projects.isEmpty {
+                noProjectsState
+            } else {
+                projectList
+            }
+        }
+    }
+
+    private var projectList: some View {
+        List(library.projects) { project in
+            Button {
+                openProject(project)
+            } label: {
+                ProjectRow(project: project)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     private var emptyState: some View {
+        infoState(
+            systemImage: "folder.badge.plus",
+            title: "Choose your projects folder",
+            message: "Point the app at the OneDrive folder synced to this phone "
+                + "that holds your project bundles.",
+            actionTitle: "Choose Folder"
+        )
+    }
+
+    private var noProjectsState: some View {
+        infoState(
+            systemImage: "tray",
+            title: "No projects found",
+            message: "That folder has no project bundles yet. Each project is a "
+                + "subfolder containing a manifest.json. Pull to refresh once they sync.",
+            actionTitle: "Choose a Different Folder"
+        )
+    }
+
+    private func errorState(_ message: String) -> some View {
+        infoState(
+            systemImage: "exclamationmark.triangle",
+            title: "Couldn't open folder",
+            message: message,
+            actionTitle: "Choose Folder"
+        )
+    }
+
+    private func infoState(
+        systemImage: String,
+        title: String,
+        message: String,
+        actionTitle: String
+    ) -> some View {
         VStack(spacing: 16) {
-            Image(systemName: "tray.and.arrow.down")
+            Image(systemName: systemImage)
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
-            Text("Open a field bundle")
-                .font(.headline)
-            Text("Receive a bundle by AirDrop, Files, or iCloud Drive, then open it here.")
+            Text(title).font(.headline)
+            Text(message)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("Open Bundle") { isImporting = true }
+            Button(actionTitle) { isImporting = true }
                 .buttonStyle(.borderedProminent)
         }
         .padding()
     }
 
-    /// Step 2: level / floorplan thumbnail list. Tapping selects the level and
-    /// navigates into capture.
-    private func levelList(_ manifest: SpecManifest) -> some View {
-        List(manifest.levels, id: \.id) { level in
-            NavigationLink {
-                CaptureView(level: level)
-            } label: {
-                LevelRow(
-                    level: level,
-                    bundleDirectory: session.bundleDirectory,
-                    deviceCount: manifest.devices.filter { $0.levelId == level.id }.count
-                )
-            }
-            .simultaneousGesture(TapGesture().onEnded {
-                session.selectedLevel = level
-            })
+    // MARK: - Actions
+
+    private func openProject(_ project: ProjectEntry) {
+        do {
+            // The project's manifest is already decoded; loadBundle re-reads it
+            // and prepares a fresh capture/export session for this project.
+            try session.loadBundle(at: project.url)
+            selectedProject = project
+        } catch {
+            #if canImport(OSLog)
+            Log.bundle.error("Failed to open project: \(error.localizedDescription, privacy: .public)")
+            #endif
         }
     }
 
-    // MARK: - Actions
-
     private func handleImport(_ result: Result<[URL], Error>) {
-        do {
-            guard let directory = try result.get().first else { return }
-            // Security-scoped access is required for user-picked locations.
-            let didAccess = directory.startAccessingSecurityScopedResource()
-            defer { if didAccess { directory.stopAccessingSecurityScopedResource() } }
-            // TODO: For a real app, copy the bundle into the app's Documents
-            // directory so the security-scoped URL does not need to stay live
-            // for the whole session.
-            try session.loadBundle(at: directory)
-        } catch {
-            loadError = String(describing: error)
-        }
+        guard let directory = try? result.get().first else { return }
+        Task { await library.adoptRoot(directory) }
     }
 }
 
-/// A single level row with a floorplan thumbnail and expected-device count.
-private struct LevelRow: View {
-    let level: Level
-    let bundleDirectory: URL?
-    let deviceCount: Int
+/// A single project row: floorplan thumbnail, name, and level count. The
+/// thumbnail loads lazily (and is cached) so opening the folder doesn't download
+/// every project's floorplan up front.
+private struct ProjectRow: View {
+    @Environment(ProjectLibrary.self) private var library
+    let project: ProjectEntry
+    @State private var thumbnail: UIImage?
 
     var body: some View {
         HStack(spacing: 12) {
-            thumbnail
+            thumbnailView
                 .frame(width: 56, height: 56)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading) {
-                Text(level.name).font(.headline)
-                Text("\(deviceCount) expected device\(deviceCount == 1 ? "" : "s")")
+                Text(project.name).font(.headline)
+                Text("\(project.levelCount) level\(project.levelCount == 1 ? "" : "s")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Spacer()
+            Image(systemName: "chevron.forward")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .contentShape(Rectangle())
+        .task(id: project.id) {
+            thumbnail = await library.thumbnail(for: project, scale: UIScreen.main.scale)
         }
     }
 
     @ViewBuilder
-    private var thumbnail: some View {
-        if let dir = bundleDirectory,
-           let image = FloorplanImage.load(level: level, bundleDirectory: dir) {
-            image.resizable().scaledToFill()
+    private var thumbnailView: some View {
+        if let thumbnail {
+            Image(uiImage: thumbnail).resizable().scaledToFill()
         } else {
             RoundedRectangle(cornerRadius: 8)
                 .fill(.quaternary)

@@ -21,11 +21,14 @@ import CaElevationKit
 struct CaElevationApp: App {
     /// App-wide session state: which bundle is loaded and the shots taken so far.
     @StateObject private var session = CaptureSessionModel()
+    /// The multi-project library: the chosen root folder and the bundles in it.
+    @State private var library = ProjectLibrary()
 
     var body: some Scene {
         WindowGroup {
             ProjectListView()
                 .environmentObject(session)
+                .environment(library)
         }
     }
 }

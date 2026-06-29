@@ -14,17 +14,24 @@ import CaElevationKit
 enum FloorplanImage {
     /// Load the floorplan image for a level from the bundle directory.
     static func load(level: Level, bundleDirectory: URL) -> Image? {
-        guard let url = try? BundleIO.floorplanURL(for: level, in: bundleDirectory),
-              let uiImage = UIImage(contentsOfFile: url.path) else { return nil }
+        guard let uiImage = loadUIImage(level: level, bundleDirectory: bundleDirectory) else {
+            return nil
+        }
         return Image(uiImage: uiImage)
     }
 
     /// Load the raw `UIImage` (for views that need pixel dimensions / overlay
     /// coordinate mapping, e.g. the place-pin and coverage screens).
+    ///
+    /// Reads through `FileProviderAccess` so a not-yet-downloaded (dataless)
+    /// floorplan in a OneDrive/File Provider folder is materialized first.
+    /// `UIImage(contentsOfFile:)` would NOT trigger that download — it only sees
+    /// bytes already on disk — so a coordinated `Data` read is used instead.
     static func loadUIImage(level: Level, bundleDirectory: URL) -> UIImage? {
-        guard let url = try? BundleIO.floorplanURL(for: level, in: bundleDirectory) else {
+        guard let url = try? BundleIO.floorplanURL(for: level, in: bundleDirectory),
+              let data = try? FileProviderAccess.readData(at: url) else {
             return nil
         }
-        return UIImage(contentsOfFile: url.path)
+        return UIImage(data: data)
     }
 }

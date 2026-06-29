@@ -79,6 +79,38 @@ public enum BundleIO {
         return manifest
     }
 
+    /// Enumerate the field bundles directly inside a library `root` directory.
+    ///
+    /// A "library root" is a folder (e.g. a OneDrive folder synced onto the
+    /// phone) that holds one subfolder per project, each being a field bundle
+    /// (`manifest.json` + its floorplan images). This lists the *immediate*
+    /// subdirectories (non-recursive — a bundle is exactly one level down) that
+    /// contain a `manifest.json`, sorted by name for stable ordering.
+    ///
+    /// This is deliberately cheap and does NOT decode the manifests or touch the
+    /// floorplan images: callers decode lazily with ``readManifest(from:)`` only
+    /// for the projects they show, which keeps it friendly to not-yet-downloaded
+    /// (dataless) File Provider placeholders. It is pure Foundation so it is
+    /// unit-tested headlessly.
+    ///
+    /// - Parameter root: the library directory to scan.
+    /// - Returns: the bundle subdirectory URLs, sorted by last path component.
+    public static func findBundles(in root: URL) throws -> [URL] {
+        let fm = FileManager.default
+        let entries = try fm.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        )
+        let bundles = entries.filter { url in
+            let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+            guard isDirectory else { return false }
+            let manifest = url.appendingPathComponent(manifestFileName)
+            return fm.fileExists(atPath: manifest.path)
+        }
+        return bundles.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
     /// Resolve a floorplan image's relative path to an absolute URL in the bundle.
     ///
     /// The floorplan path is untrusted (it comes from a decoded manifest), so it
