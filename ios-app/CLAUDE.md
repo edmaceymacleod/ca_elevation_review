@@ -87,7 +87,8 @@ test). Does it touch a sensor/UI? → `CaElevationApp`.
 **Native-default by policy** — the app inherits Apple's design language; we don't
 invent a theme. Use semantic fonts (`.headline`/`.caption`, never hardcoded
 sizes), semantic colors (`.secondary`; status colors carry meaning — green =
-captured, blue/red = camera/other device marker), SF Symbols, and stock controls
+captured; floorplan pins encode role, blue `camera.fill` = a camera shot, red
+`mappin.circle.fill` = the operator's location), SF Symbols, and stock controls
 (`.borderedProminent`, `.segmented`). The one brand color is `AccentColor` (a
 blueprint blue) in `Sources/CaElevationApp/Assets.xcassets`; rely on the global
 tint rather than hardcoding it. The app icon there is a **placeholder**. Full

@@ -55,9 +55,11 @@ Color carries **meaning**, not branding. Two distinct uses, kept separate:
 2. **Status encoding** — color tells the operator the state of a capture. Keep
    these meanings stable across screens:
    - **Green** = captured / done (`CoverageView` capture checkmarks).
-   - **Blue vs red** = device-type marker on the plan — blue for cameras, red for
-     other devices (`CoverageView` plan pins). Tied to nothing else; don't reuse
-     red as a generic error color without checking this.
+   - **Floorplan pin markers** encode *role* via an SF Symbol + tint, not device
+     type (`PinMarker` in `CoverageView`): **blue `camera.fill`** = a captured
+     camera shot's position; **red `mappin.circle.fill`** = the operator's "where
+     you stood" location pin. Don't repurpose either color elsewhere (e.g. red as
+     a generic error color) without checking these.
    - **Confidence** (low/medium/high) rides the stock `.segmented` picker in
      `PlacePinView`; don't color-code it.
 
@@ -117,8 +119,9 @@ target; `project.yml` names them via `ASSETCATALOG_COMPILER_APPICON_NAME` and
 To change the accent, edit `AccentColor.colorset/Contents.json` (and update the
 hex values listed above). To replace the icon, drop a final 1024×1024 PNG over
 `AppIcon.appiconset/AppIcon-1024.png` (keep it 1024², no alpha — iOS masks the
-corners). Don't hand-edit the `.xcodeproj`; assets flow through `xcodegen
-generate` like any other source (`ios-app/CLAUDE.md` rule 1).
+corners). The catalog lives under the target's `sources:` path in `project.yml`,
+so `xcodegen generate` compiles it automatically — never hand-edit the
+`.xcodeproj` (`ios-app/CLAUDE.md` rule 1).
 
 ---
 
@@ -126,9 +129,10 @@ generate` like any other source (`ios-app/CLAUDE.md` rule 1).
 
 These are unresolved and intentionally *not* baked in yet:
 
-- **App name.** The design doc still carries the working name *PlumbAR* as an
-  open question (`docs/design.md` §"Open questions"). `CFBundleDisplayName` is
-  currently "CA Elevation Review". Settle the name before the icon art is final.
+- **App name.** Owned by `docs/design.md` §"Open questions" (working name
+  *PlumbAR*) — that is the single place the name gets decided; this doc does not
+  duplicate it. For reference, `CFBundleDisplayName` is currently "CA Elevation
+  Review", and the name should be settled before the icon art is final.
 - **Final app icon.** The committed icon is a placeholder (see above).
 - **Launch screen.** `project.yml` ships an empty `UILaunchScreen: {}` (system
   default). Decide whether a branded launch screen is worth it — by this doc's
@@ -136,5 +140,7 @@ These are unresolved and intentionally *not* baked in yet:
 - **Accent shade.** The blue above is a sensible default, not a chosen brand
   color. Revisit once naming/branding is settled.
 
-When one of these is decided, record it here and delete it from this list — this
-doc is the memory for the app's look and feel.
+This doc owns only the look-and-feel decisions (icon, launch screen, accent
+shade) — when one is settled, record it here and delete it from this list.
+Decisions owned elsewhere (the app name lives in `docs/design.md`) get resolved
+there; this list only points at them.
