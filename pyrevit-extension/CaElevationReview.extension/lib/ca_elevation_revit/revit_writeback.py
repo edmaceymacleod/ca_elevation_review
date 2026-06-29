@@ -59,6 +59,18 @@ def apply_verdicts(doc, view, overrides: List[DeviceOverride]) -> int:  # noqa: 
         #     doc.IsModifiable == True and does NOT open a second one.
         clear_prior_overrides(doc, view)
 
+        # Resolve the model's solid fill pattern ONCE (a doc-level lookup, not
+        # per element). Without it the surface foreground pattern is "<none>",
+        # so the colour shows on plan lines but the surface fill renders empty in
+        # 3D/section views -- the review-flagged gap. None => fall back to the
+        # colour-only override and log, never crash.
+        solid_fill_id = _solid_fill_pattern_id(doc)
+        if solid_fill_id is None:
+            logger.warning(
+                "no solid fill pattern found in this model; surface fills will "
+                "not render (plan line colour still applied)"
+            )
+
         # (2) Apply the current report's overrides, marking each element.
         applied = 0
         missing = 0
@@ -72,7 +84,7 @@ def apply_verdicts(doc, view, overrides: List[DeviceOverride]) -> int:  # noqa: 
                     override.device_id,
                 )
                 continue
-            ogs = _build_override(override.color)
+            ogs = _build_override(override.color, solid_fill_id)
             view.SetElementOverrides(el.Id, ogs)
             _stamp_marker(el)
             applied += 1
@@ -179,12 +191,48 @@ def _strip_marker(el) -> None:  # noqa: ANN001
     param.Set(value.replace(_SENTINEL, "").strip())
 
 
-def _build_override(color):  # noqa: ANN001
+def _solid_fill_pattern_id(doc):  # noqa: ANN001
+    """Return an ElementId of a SOLID fill pattern in ``doc``, or None. LIVE.
+
+    Needed so the surface/cut foreground override paints a filled colour rather
+    than an empty pattern. Prefers a *drafting*-target solid fill (renders in any
+    view type); falls back to any solid fill. The well-known ``"<Solid fill>"``
+    name is localised in non-English Revit, so we test ``IsSolidFill`` rather than
+    matching the name. None when the model has no solid fill pattern at all.
+    """
+    from Autodesk.Revit.DB import (
+        FillPatternElement,
+        FillPatternTarget,
+        FilteredElementCollector,
+    )
+
+    any_solid = None
+    for fpe in FilteredElementCollector(doc).OfClass(FillPatternElement):
+        try:
+            pattern = fpe.GetFillPattern()
+        except Exception:
+            continue
+        if pattern is None or not pattern.IsSolidFill:
+            continue
+        if any_solid is None:
+            any_solid = fpe.Id
+        try:
+            if pattern.Target == FillPatternTarget.Drafting:
+                return fpe.Id  # drafting solid fill: ideal, stop here
+        except Exception:
+            pass
+    return any_solid
+
+
+def _build_override(color, solid_fill_id=None):  # noqa: ANN001
     """Build OverrideGraphicSettings painting projection lines + surface fill.
 
     ``color`` is a 3-int RGB tuple (Autodesk.Revit.DB.Color takes byte r,g,b;
-    pythonnet narrows the ints). Setter names have drifted across API years, so
-    each is guarded with ``hasattr``; cut-plane setters are applied too for the
+    pythonnet narrows the ints). ``solid_fill_id`` is the ElementId of a solid
+    fill pattern (from ``_solid_fill_pattern_id``); without it the surface/cut
+    foreground colour is set but the pattern stays "<none>", so the fill renders
+    empty in 3D/section views. Setter names have drifted across API years, so each
+    is guarded with ``hasattr``; cut-plane setters are applied too for the
     section/3D views where they exist.
     """
     from Autodesk.Revit.DB import Color, OverrideGraphicSettings
@@ -196,10 +244,14 @@ def _build_override(color):  # noqa: ANN001
         ogs.SetSurfaceForegroundPatternColor(revit_color)
     if hasattr(ogs, "SetSurfaceForegroundPatternVisible"):
         ogs.SetSurfaceForegroundPatternVisible(True)
+    if solid_fill_id is not None and hasattr(ogs, "SetSurfaceForegroundPatternId"):
+        ogs.SetSurfaceForegroundPatternId(solid_fill_id)
     if hasattr(ogs, "SetCutLineColor"):
         ogs.SetCutLineColor(revit_color)
     if hasattr(ogs, "SetCutForegroundPatternColor"):
         ogs.SetCutForegroundPatternColor(revit_color)
     if hasattr(ogs, "SetCutForegroundPatternVisible"):
         ogs.SetCutForegroundPatternVisible(True)
+    if solid_fill_id is not None and hasattr(ogs, "SetCutForegroundPatternId"):
+        ogs.SetCutForegroundPatternId(solid_fill_id)
     return ogs
