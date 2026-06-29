@@ -2,11 +2,9 @@
 #
 # Lints the pure CaElevationKit library and the SwiftUI/ARKit app layer. Runs in
 # CI on macOS and GATES (see the CaElevationKit (macos) job in
-# .github/workflows/ci.yml): pre-existing violations are absorbed by the
-# committed baseline (.swiftlint-baseline.json) so only NEW violations fail the
-# build. Regenerate the baseline on a Mac with:
-#   cd ios-app && swiftlint lint --config .swiftlint.yml \
-#       --write-baseline .swiftlint-baseline.json
+# .github/workflows/ci.yml): the tree is kept clean, so any violation fails the
+# build (CI runs `swiftlint lint --strict`). Run locally before pushing with:
+#   cd ios-app && swiftlint lint --strict --config .swiftlint.yml
 included:
   - Sources
   - Tests

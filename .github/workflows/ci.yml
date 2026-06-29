@@ -158,7 +158,7 @@ jobs:
       - run: pip install -c engine/requirements-dev.txt -e "engine"
       - run: python engine/tools/validate_schemas.py -v
 
-  # --- iOS: build/test the pure kit (blocks); SwiftLint gates via baseline ---
+  # --- iOS: build/test the pure kit (blocks); SwiftLint gates (--strict) ------
   ios_kit:
     name: CaElevationKit (macos)
     needs: changes
@@ -175,35 +175,15 @@ jobs:
         run: swift test
       # SwiftLint is not preinstalled on current macos-latest images, so install
       # it explicitly -- otherwise the gating step below fails with
-      # "swiftlint: command not found" and the baseline can never bootstrap.
+      # "swiftlint: command not found".
       - name: Install SwiftLint
         run: brew install swiftlint
-      # SwiftLint now GATES. Pre-existing violations are absorbed by a committed
-      # baseline (ios-app/.swiftlint-baseline.json); only NEW violations fail the
-      # job. Bootstrap: when the baseline is missing, the step generates one,
-      # uploads it as the `swiftlint-baseline` artifact (download -> commit), and
-      # fails so gating can't be silently skipped. Regenerate on a Mac with:
-      #   cd ios-app && swiftlint lint --config .swiftlint.yml \
-      #       --write-baseline .swiftlint-baseline.json
-      - name: SwiftLint (gating; baseline absorbs pre-existing violations)
+      # SwiftLint GATES: the repo is clean, so any violation (new or otherwise)
+      # fails the job. --strict promotes warnings to errors so nothing slips
+      # through as a non-failing warning.
+      - name: SwiftLint (gating)
         working-directory: ios-app
-        run: |
-          if [ ! -f .swiftlint-baseline.json ]; then
-            echo "::error::No SwiftLint baseline committed. Generating one as the 'swiftlint-baseline' artifact -- download it, commit to ios-app/.swiftlint-baseline.json, and re-run to enable gating."
-            swiftlint lint --config .swiftlint.yml --write-baseline .swiftlint-baseline.json || true
-            exit 1
-          fi
-          swiftlint lint --config .swiftlint.yml --baseline .swiftlint-baseline.json
-      - name: Upload generated SwiftLint baseline (bootstrap only)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: swiftlint-baseline
-          path: ios-app/.swiftlint-baseline.json
-          # The baseline is a dotfile; upload-artifact@v4 skips hidden files by
-          # default, which silently dropped it on the first bootstrap run.
-          include-hidden-files: true
-          if-no-files-found: ignore
+        run: swiftlint lint --strict --config .swiftlint.yml
 
   # --- iOS: build the actual App target so actool compiles the asset catalog --
   #

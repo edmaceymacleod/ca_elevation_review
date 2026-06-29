@@ -98,7 +98,13 @@ struct CoverageView: View {
         let capturedIds = Set(shotsForLevel.compactMap { $0.elevationId })
         let grouped = Dictionary(grouping: devices) { $0.elevationId ?? "(untagged)" }
         return grouped
-            .map { ExpectedElevation(id: $0.key, deviceCount: $0.value.count, captured: capturedIds.contains($0.key)) }
+            .map {
+                ExpectedElevation(
+                    id: $0.key,
+                    deviceCount: $0.value.count,
+                    captured: capturedIds.contains($0.key)
+                )
+            }
             .sorted { $0.id < $1.id }
     }
 
@@ -182,7 +188,9 @@ struct FloorplanPinCanvas: View {
                 // Read-only camera icons.
                 ForEach(Array(cameras.enumerated()), id: \.offset) { _, marker in
                     PinMarker(headingDegrees: marker.pin.heading, isCamera: true)
-                        .position(transform.displayPoint(fromPixel: CGPoint(x: marker.pin.x, y: marker.pin.y)))
+                        .position(
+                            transform.displayPoint(fromPixel: CGPoint(x: marker.pin.x, y: marker.pin.y))
+                        )
                 }
             }
             .contentShape(Rectangle())
