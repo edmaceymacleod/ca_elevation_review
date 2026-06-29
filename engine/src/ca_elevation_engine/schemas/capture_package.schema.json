@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/edmaceymacleod/ca_elevation_review/schemas/capture_package.schema.json",
+  "title": "Capture Package",
+  "description": "Field capture returned from the phone: per shot an RGB image, depth/point-cloud, ARKit intrinsics + pose, and the user's floorplan pin + heading. One of the two payloads the engine ingests.",
+  "type": "object",
+  "required": ["schema_version", "project_id", "shots"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "project_id": { "type": "string", "minLength": 1, "description": "Must match the manifest project.id." },
+    "captured_at": { "type": "string", "format": "date-time" },
+    "device_model": { "type": "string", "description": "e.g. iPhone 15 Pro." },
+    "app_version": { "type": "string" },
+    "shots": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/shot" }
+    }
+  },
+  "$defs": {
+    "shot": {
+      "type": "object",
+      "required": ["id", "level_id", "rgb_image", "intrinsics", "pose", "pin"],
+      "additionalProperties": false,
+      "dependencies": { "depth_map": ["depth_size"] },
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "level_id": { "type": "string" },
+        "elevation_id": { "type": "string", "description": "Optional user-tagged target elevation/wall." },
+        "rgb_image": { "type": "string", "description": "Relative path to the RGB image in the bundle." },
+        "depth_map": { "type": "string", "description": "Relative path to a raw float32 depth map (meters), row-major HxW." },
+        "depth_size": {
+          "type": "array",
+          "description": "[height, width] of the depth map, required if depth_map is present.",
+          "items": { "type": "integer", "exclusiveMinimum": 0 },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "point_cloud": { "type": "string", "description": "Relative path to an E57/PLY point cloud, alternative to depth_map." },
+        "intrinsics": {
+          "type": "object",
+          "required": ["fx", "fy", "cx", "cy", "width", "height"],
+          "additionalProperties": false,
+          "properties": {
+            "fx": { "type": "number", "exclusiveMinimum": 0 },
+            "fy": { "type": "number", "exclusiveMinimum": 0 },
+            "cx": { "type": "number" },
+            "cy": { "type": "number" },
+            "width": { "type": "integer", "exclusiveMinimum": 0 },
+            "height": { "type": "integer", "exclusiveMinimum": 0 }
+          }
+        },
+        "pose": {
+          "type": "array",
+          "description": "4x4 row-major camera-to-world transform in ARKit's world frame (right-handed, -Z forward, +Y up).",
+          "items": { "type": "number" },
+          "minItems": 16,
+          "maxItems": 16
+        },
+        "pin": {
+          "type": "object",
+          "required": ["x", "y", "heading"],
+          "additionalProperties": false,
+          "description": "User-placed georeference anchor: floorplan pixel where the operator stood + camera heading.",
+          "properties": {
+            "x": { "type": "number", "description": "Floorplan pixel x of operator position." },
+            "y": { "type": "number", "description": "Floorplan pixel y of operator position." },
+            "heading": { "type": "number", "description": "Camera heading in plan, degrees, 0=+X CCW." },
+            "confidence": { "type": "string", "enum": ["low", "medium", "high"], "default": "medium" }
+          }
+        },
+        "captured_at": { "type": "string", "format": "date-time" },
+        "observations": {
+          "type": "array",
+          "description": "Optional pre-extracted device observations (used by synthetic fixtures and as a vision-backend output channel). Each is a candidate device seen in this shot, in model coordinates.",
+          "items": {
+            "type": "object",
+            "required": ["position"],
+            "additionalProperties": false,
+            "properties": {
+              "position": { "$ref": "#/$defs/point3" },
+              "mounting_height": { "type": "number" },
+              "facing_angle": { "type": "number" },
+              "detected_type": { "type": "string", "description": "Vision-assisted device type guess, if legible." },
+              "type_confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "point3": {
+      "type": "object",
+      "required": ["x", "y", "z"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    }
+  }
+}

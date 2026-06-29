@@ -1,0 +1,110 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    CA Elevation Review - Revit add-in.
+
+    Supported Revit years: 2024, 2025, 2026, 2027.
+
+    Multi-targeted so a single build covers the supported Revit runtimes:
+      * net48          -> Revit 2024 runs on .NET Framework 4.8
+      * net8.0-windows -> Revit 2025 / 2026 / 2027 run on .NET 8 (Windows desktop)
+
+    Revit's own runtime decides which TFM is loaded; we ship both DLLs and let
+    the .addin manifest point at the right one per install (see README).
+
+    The $(RevitVersion) property selects which Revit API reference assemblies to
+    bind against. Override it on the command line, e.g.:
+      dotnet build -c Release -p:RevitVersion=2027
+    or set it per-TFM below. $(RevitApiDir) must point at the local Revit
+    install that owns RevitAPI.dll / RevitAPIUI.dll (NOT redistributable; never
+    commit them, never set <Private>true</Private>).
+  -->
+
+  <PropertyGroup>
+    <TargetFrameworks>net48;net8.0-windows</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
+    <Configurations>Debug;Release</Configurations>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <RootNamespace>CaElevationReview.Addin</RootNamespace>
+    <AssemblyName>CaElevationReview.Addin</AssemblyName>
+
+    <!-- XML doc comments are part of the deliverable; do not fail the build on
+         missing docs in stubbed members. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <!-- Revit loads add-in assemblies into its own AppDomain; copying API DLLs
+         into the output would shadow Revit's and crash. Keep them out. -->
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <!--
+    Default Revit version per TFM. Revit 2024 == net48; Revit 2025/2026/2027 ==
+    net8. These defaults are only used when $(RevitVersion) is not passed in.
+    Build a specific year with, e.g. -p:RevitVersion=2027 (net8) or
+    -p:RevitVersion=2024 (net48).
+  -->
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net48' and '$(RevitVersion)' == ''">
+    <RevitVersion>2024</RevitVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows' and '$(RevitVersion)' == ''">
+    <RevitVersion>2026</RevitVersion>
+  </PropertyGroup>
+
+  <!--
+    Where the Revit API assemblies live. Default to the standard install path;
+    override with -p:RevitApiDir=... if Revit is installed elsewhere.
+  -->
+  <PropertyGroup Condition="'$(RevitApiDir)' == ''">
+    <RevitApiDir>C:\Program Files\Autodesk\Revit $(RevitVersion)</RevitApiDir>
+  </PropertyGroup>
+
+  <!--
+    Revit API references. <Private>false</Private> == "do not copy local";
+    Revit supplies them at runtime. HintPath resolves against $(RevitApiDir).
+  -->
+  <ItemGroup>
+    <Reference Include="RevitAPI">
+      <HintPath>$(RevitApiDir)\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(RevitApiDir)\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+      <SpecificVersion>false</SpecificVersion>
+    </Reference>
+  </ItemGroup>
+
+  <!--
+    Define a REVIT20xx compile symbol so platform-coupled code can branch on API
+    differences between years when the live work is done.
+  -->
+  <PropertyGroup>
+    <DefineConstants>$(DefineConstants);REVIT$(RevitVersion)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      JSON serialization for the two payloads (spec manifest, verdict report).
+      We use System.Text.Json (in-box on net8, available as a package on net48)
+      so the add-in carries no extra runtime dependency on net8.
+
+      If you prefer Newtonsoft.Json instead, swap to:
+        <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+      and replace the System.Text.Json attributes in the DTOs accordingly.
+    -->
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+  <!-- Revit ribbon icons / resources would live here once added.
+  <ItemGroup>
+    <Resource Include="Resources\*.png" />
+  </ItemGroup>
+  -->
+
+</Project>

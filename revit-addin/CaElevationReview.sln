@@ -1,0 +1,28 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CaElevationReview.Addin", "src\CaElevationReview.Addin\CaElevationReview.Addin.csproj", "{1B7A4C2E-8F3D-4A11-9C2E-3D5A6B7C8D90}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CaElevationReview.Tests", "tests\CaElevationReview.Tests\CaElevationReview.Tests.csproj", "{2C8B5D3F-9A4E-4B22-AD3F-4E6B7C8D9E01}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1B7A4C2E-8F3D-4A11-9C2E-3D5A6B7C8D90}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1B7A4C2E-8F3D-4A11-9C2E-3D5A6B7C8D90}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1B7A4C2E-8F3D-4A11-9C2E-3D5A6B7C8D90}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1B7A4C2E-8F3D-4A11-9C2E-3D5A6B7C8D90}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2C8B5D3F-9A4E-4B22-AD3F-4E6B7C8D9E01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2C8B5D3F-9A4E-4B22-AD3F-4E6B7C8D9E01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2C8B5D3F-9A4E-4B22-AD3F-4E6B7C8D9E01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2C8B5D3F-9A4E-4B22-AD3F-4E6B7C8D9E01}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,150 @@
+"""Compare + verdict: device matching, deltas, and classification."""
+
+from __future__ import annotations
+
+import pytest
+
+from ca_elevation_engine import ingest
+from ca_elevation_engine.compare import match_all
+from ca_elevation_engine.models import Verdict
+from ca_elevation_engine.register import register_capture
+from ca_elevation_engine.verdict import classify_all
+
+pytestmark = pytest.mark.unit
+
+
+@pytest.fixture
+def results(f01_manifest_path, f01_capture_path):
+    manifest = ingest.load_manifest(f01_manifest_path)
+    capture = ingest.load_capture(f01_capture_path)
+    regs = register_capture(manifest, capture)
+    matches = match_all(manifest, capture, regs)
+    return {r.device_id: r for r in classify_all(matches, manifest)}
+
+
+def test_pass_device(results):
+    r = results["D-PASS"]
+    assert r.verdict is Verdict.PASS
+    assert r.deltas.position == pytest.approx(0.02236, abs=1e-4)
+    assert r.matched_shot_id == "S1"
+    assert r.confidence > 0.8
+
+
+def test_flag_device_out_of_position_tolerance(results):
+    r = results["D-FLAG"]
+    assert r.verdict is Verdict.FLAG
+    assert r.deltas.position == pytest.approx(0.3, abs=1e-6)
+    assert any("position" in n for n in r.notes)
+
+
+def test_absent_in_coverage_is_higher_confidence(results):
+    r = results["D-ABSENT"]
+    assert r.verdict is Verdict.ABSENT
+    assert r.matched_shot_id is None
+    assert r.confidence == pytest.approx(0.7)
+
+
+def test_type_mismatch(results):
+    r = results["D-TYPE"]
+    assert r.verdict is Verdict.TYPE_MISMATCH
+    assert r.confidence == pytest.approx(0.9)
+    assert any("disagrees" in n for n in r.notes)
+
+
+def test_coverage_gap_low_confidence_absent(results):
+    r = results["D-GAP"]
+    assert r.verdict is Verdict.ABSENT
+    assert r.confidence == pytest.approx(0.25)
+    assert any("coverage gap" in n for n in r.notes)
+
+
+def test_every_verdict_class_present(results):
+    seen = {r.verdict for r in results.values()}
+    assert seen == {Verdict.PASS, Verdict.FLAG, Verdict.ABSENT, Verdict.TYPE_MISMATCH}
+
+
+def test_height_delta_within_tolerance_does_not_flag(results):
+    # D-PASS height delta is 0.01 (< 0.042 tol); must not contribute a breach.
+    r = results["D-PASS"]
+    assert r.deltas.mounting_height == pytest.approx(0.01, abs=1e-6)
+
+
+def test_type_agreement_marks_identity_confirmed(results):
+    # D-PASS observation detected_type "HID-R10" agrees w/ expected type at 0.82.
+    assert results["D-PASS"].identity_confirmed is True
+
+
+def test_no_observations_all_absent(f01_manifest_path, f01_capture_path):
+    manifest = ingest.load_manifest(f01_manifest_path)
+    capture = ingest.load_capture(f01_capture_path)
+    for shot in capture.shots:
+        shot.observations = []
+    regs = register_capture(manifest, capture)
+    results = classify_all(match_all(manifest, capture, regs), manifest)
+    assert all(r.verdict is Verdict.ABSENT for r in results)
+
+
+# --- classify-level TYPE_MISMATCH boundary cases (no fixtures) -------------- #
+def _classify_with_observation(expected_type, detected_type, type_confidence):
+    """Classify one device whose single observation sits exactly on it."""
+    from ca_elevation_engine.compare import Match
+    from ca_elevation_engine.models import (
+        Device,
+        Observation,
+        Point3,
+        Project,
+        SpecManifest,
+        Tolerances,
+    )
+    from ca_elevation_engine.verdict import classify
+
+    device = Device(
+        id="d1",
+        family="Access",
+        type=expected_type,
+        level_id="L1",
+        position=Point3(0.0, 0.0, 4.0),
+        mounting_height=4.0,
+    )
+    manifest = SpecManifest(
+        schema_version="1.0.0",
+        project=Project(id="p", name="P", units="feet"),
+        levels=[],
+        devices=[device],
+        default_tolerances=Tolerances(position=0.083, mounting_height=0.042, orientation=10.0),
+    )
+    obs = Observation(
+        position=Point3(0.0, 0.0, 4.0),
+        mounting_height=4.0,
+        facing_angle=0.0,
+        detected_type=detected_type,
+        type_confidence=type_confidence,
+    )
+    match = Match(
+        device=device,
+        observation=obs,
+        matched_shot_id="S1",
+        position_delta=0.0,
+        height_delta=0.0,
+        orientation_delta=0.0,
+    )
+    return classify(match, manifest)
+
+
+def test_substring_type_agreement_is_pass_not_mismatch():
+    # "reader" is a substring of "Card Reader" -> agreement, confident -> PASS + confirmed.
+    r = _classify_with_observation("Card Reader", "reader", 0.7)
+    assert r.verdict is Verdict.PASS
+    assert r.identity_confirmed is True
+
+
+def test_disagreeing_type_below_confidence_is_not_mismatch():
+    # Disagrees, but type_confidence 0.4 < 0.6 threshold -> identity stays human-confirmable.
+    r = _classify_with_observation("Card Reader", "Exit Sign", 0.4)
+    assert r.verdict is Verdict.PASS
+    assert r.identity_confirmed is False
+
+
+def test_disagreeing_type_above_confidence_is_mismatch():
+    r = _classify_with_observation("Card Reader", "Exit Sign", 0.9)
+    assert r.verdict is Verdict.TYPE_MISMATCH

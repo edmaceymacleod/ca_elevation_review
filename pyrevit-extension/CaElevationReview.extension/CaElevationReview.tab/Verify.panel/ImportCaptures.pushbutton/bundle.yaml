@@ -1,0 +1,5 @@
+title: Import\nCaptures
+tooltip: >-
+  Run the engine over a returned capture package (out-of-process) and colour the
+  model's devices by verdict (pass / flag / absent / type mismatch).
+author: Sterling

@@ -1,0 +1,111 @@
+# Pre-commit mirrors CI, per language (design principle #5).
+#
+# The DEFAULT (pre-commit) stage is kept fast: formatting, lint, secret scan,
+# and cheap file hygiene. Anything slow or platform-coupled -- mypy, the .NET /
+# Swift toolchains, the full schema validation -- runs in the `manual` or
+# `pre-push` stage so a normal `git commit` stays snappy. Run the heavy ones on
+# demand:
+#
+#   pre-commit run --all-files                # default (fast) hooks
+#   pre-commit run --hook-stage pre-push --all-files
+#   pre-commit run --hook-stage manual mypy-engine
+#   pre-commit run --hook-stage manual dotnet-format
+#
+# Install both stages once:  pre-commit install --hook-type pre-commit --hook-type pre-push
+minimum_pre_commit_version: "3.5.0"
+
+default_stages: [pre-commit]
+
+repos:
+  # ---- Standard file hygiene (fast, default stage) -----------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+
+  # ---- Python: ruff lint + format, scoped to engine/ ---------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # >=0.9: the pyrevit lib config references UP045 (added in ruff 0.9); older
+    # ruff aborts with "Unknown rule selector". Engine code is already clean
+    # under modern ruff.
+    rev: v0.9.6
+    hooks:
+      - id: ruff
+        name: ruff (lint, engine)
+        args: ["--fix"]
+        files: ^engine/
+      - id: ruff-format
+        name: ruff format (engine)
+        files: ^engine/
+      # pyRevit extension lib: same ruff, at the py38 floor via its own config.
+      - id: ruff
+        name: ruff (lint, pyrevit-extension @py38)
+        args: ["--fix", "--config", "pyrevit-extension/tests/pyproject.toml"]
+        files: ^pyrevit-extension/
+      - id: ruff-format
+        name: ruff format (pyrevit-extension)
+        args: ["--config", "pyrevit-extension/tests/pyproject.toml"]
+        files: ^pyrevit-extension/
+
+  # ---- Secret scanning (fast, default stage) -----------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+
+  # ---- Local hooks: heavier / toolchain-coupled, opt-in stages -----------
+  - repo: local
+    hooks:
+      # mypy needs the installed engine env; runs on pre-push, not every commit.
+      - id: mypy-engine
+        name: mypy (engine)
+        entry: bash -c 'cd engine && mypy'
+        language: system
+        types: [python]
+        files: ^engine/
+        pass_filenames: false
+        stages: [pre-push, manual]
+
+      # JSON Schema + fixture validation (mirrors the validate schemas + fixtures
+      # job in ci.yml).
+      - id: validate-schemas
+        name: validate JSON schemas + fixtures
+        entry: python engine/tools/validate_schemas.py
+        language: system
+        files: ^engine/(src/ca_elevation_engine/schemas/|fixtures/|tools/validate_schemas\.py)
+        pass_filenames: false
+        stages: [pre-push, manual]
+
+      # C# add-in: dotnet format. Manual only -- needs the .NET SDK and the .sln.
+      - id: dotnet-format
+        name: dotnet format (revit-addin)
+        entry: dotnet format revit-addin/CaElevationReview.sln --verify-no-changes
+        language: system
+        files: ^revit-addin/.*\.cs$
+        pass_filenames: false
+        stages: [manual]
+
+      # Swift: swift-format / swiftlint on the iOS app. Manual only -- needs the
+      # Swift toolchain (macOS). Either tool works; swift-format shown here.
+      - id: swift-format
+        name: swift-format (ios-app)
+        entry: bash -c 'swift format lint --recursive ios-app/Sources ios-app/Tests'
+        language: system
+        files: ^ios-app/.*\.swift$
+        pass_filenames: false
+        stages: [manual]
+
+      # Live / heavy engine suite (heavy native backends). Never on commit.
+      - id: pytest-heavy
+        name: pytest (heavy backends, engine)
+        entry: bash -c 'cd engine && pytest -q -m heavy'
+        language: system
+        files: ^engine/
+        pass_filenames: false
+        stages: [manual]

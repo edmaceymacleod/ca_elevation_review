@@ -1,0 +1,14 @@
+# Capped toolchain for the Python 3.8/3.9 FLOOR jobs. The engine's own pins
+# (pytest>=7.4, mypy>=1.8, ruff>=0.4) are floors, not ceilings; a fresh resolve on
+# a 3.8 runner can pull a pytest/ruff/mypy that itself dropped 3.8 support. These
+# caps keep the floor toolchain reproducibly executable on 3.8.
+#
+# The engine is deliberately NOT installed on the floor jobs (its
+# requires-python>=3.10 errors the install) -- that is what makes the 3.8 syntax
+# floor executable rather than asserted.
+pytest>=7.4,<8.4
+# ruff is a standalone binary (host-Python-independent), so no 3.8 cap needed.
+# Must be >=0.9: the lib ruff config references UP045, introduced in ruff 0.9
+# (older ruff aborts with "Unknown rule selector: UP045").
+ruff>=0.9
+mypy>=1.8,<1.12
