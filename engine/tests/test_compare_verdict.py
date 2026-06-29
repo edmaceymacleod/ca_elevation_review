@@ -148,3 +148,23 @@ def test_disagreeing_type_below_confidence_is_not_mismatch():
 def test_disagreeing_type_above_confidence_is_mismatch():
     r = _classify_with_observation("Card Reader", "Exit Sign", 0.9)
     assert r.verdict is Verdict.TYPE_MISMATCH
+
+
+def test_registration_notes_surface_in_match_and_result(f01_manifest_path, f01_capture_path):
+    """Matched-shot registration notes must reach Match.notes -> DeviceResult.notes."""
+    from ca_elevation_engine.compare import match_device
+    from ca_elevation_engine.verdict import classify
+
+    manifest = ingest.load_manifest(f01_manifest_path)
+    capture = ingest.load_capture(f01_capture_path)
+    regs = register_capture(manifest, capture)
+    # Seed a synthetic registration note on the shot D-PASS matches against (S1).
+    regs["S1"].notes.append("ICP refinement applied: rmse=0.0123 feet")
+
+    device = next(d for d in manifest.devices if d.id == "D-PASS")
+    match = match_device(device, capture, manifest, regs)
+    assert match.matched_shot_id == "S1"
+    assert any("registration: ICP refinement applied" in n for n in match.notes)
+
+    result = classify(match, manifest)
+    assert any("registration: ICP refinement applied" in n for n in result.notes)

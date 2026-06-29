@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0.0",
+  "project": {
+    "id": "demo-empty-07",
+    "name": "Synthetic Empty Manifest",
+    "units": "feet",
+    "revit_file": "demo-empty-07.rvt"
+  },
+  "coordinate_system": {
+    "name": "Project",
+    "north_angle": 0.0
+  },
+  "default_tolerances": {
+    "position": 0.083,
+    "mounting_height": 0.042,
+    "orientation": 10.0
+  },
+  "levels": [
+    {
+      "id": "L1",
+      "name": "Level 1",
+      "elevation": 0.0,
+      "floorplan": {
+        "image": "plan_L1.png",
+        "width_px": 1000,
+        "height_px": 800,
+        "pixel_to_model": [
+          0.01,
+          0.0,
+          0.0,
+          0.0,
+          0.01,
+          0.0
+        ]
+      }
+    }
+  ],
+  "devices": []
+}

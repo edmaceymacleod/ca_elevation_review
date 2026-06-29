@@ -25,6 +25,7 @@ from html import escape
 from typing import TYPE_CHECKING
 
 from ..models import Verdict
+from . import _ordering
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ..models import (
@@ -34,33 +35,14 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
         VerdictReport,
     )
 
-# Verdict -> (human label, chip/badge color). Green/orange/red/purple per spec.
+# Verdict -> chip/badge color. Green/orange/red/purple per spec. Color is a
+# presentation concern and stays local; ordering/labels come from _ordering.
 _VERDICT_COLORS: dict[str, str] = {
     Verdict.PASS.value: "#2e7d32",  # green
     Verdict.FLAG.value: "#ef6c00",  # orange
     Verdict.ABSENT.value: "#c62828",  # red
     Verdict.TYPE_MISMATCH.value: "#6a1b9a",  # purple
 }
-
-_VERDICT_LABELS: dict[str, str] = {
-    Verdict.PASS.value: "PASS",
-    Verdict.FLAG.value: "FLAG",
-    Verdict.ABSENT.value: "ABSENT",
-    Verdict.TYPE_MISMATCH.value: "TYPE MISMATCH",
-}
-
-# Sort key: problems first (flag/absent/type_mismatch), then pass. Within a
-# bucket, stable by device id for deterministic output.
-_VERDICT_SORT_RANK: dict[str, int] = {
-    Verdict.FLAG.value: 0,
-    Verdict.ABSENT.value: 1,
-    Verdict.TYPE_MISMATCH.value: 2,
-    Verdict.PASS.value: 3,
-}
-
-_PROBLEM_VERDICTS = frozenset(
-    {Verdict.FLAG.value, Verdict.ABSENT.value, Verdict.TYPE_MISMATCH.value}
-)
 
 
 def _esc(value: object) -> str:
@@ -72,10 +54,7 @@ def _esc(value: object) -> str:
 
 def _sorted_results(report: VerdictReport) -> list[DeviceResult]:
     """Device results with problems surfaced first, then by device id."""
-    return sorted(
-        report.device_results,
-        key=lambda r: (_VERDICT_SORT_RANK.get(r.verdict.value, 99), r.device_id),
-    )
+    return _ordering.ordered_results(report)
 
 
 def _fmt_delta(value: float | None, units: str | None, *, angular: bool = False) -> str:
@@ -96,9 +75,17 @@ def _fmt_delta(value: float | None, units: str | None, *, angular: bool = False)
     return f"{value:.3f}{suffix}"
 
 
+def _verdict_label(verdict_value: str) -> str:
+    """Full-length human label for a verdict (drift-safe, from _ordering)."""
+    try:
+        return _ordering.VERDICT_LABELS[Verdict(verdict_value)]
+    except ValueError:
+        return verdict_value.upper()
+
+
 def _verdict_badge(verdict_value: str) -> str:
     color = _VERDICT_COLORS.get(verdict_value, "#455a64")
-    label = _VERDICT_LABELS.get(verdict_value, verdict_value.upper())
+    label = _verdict_label(verdict_value)
     return f'<span class="badge" style="background:{color}">{_esc(label)}</span>'
 
 
@@ -147,10 +134,9 @@ def render_html(
         ]
     )
 
-    rows: list[str] = []
-    for r in _sorted_results(report):
+    def _device_row(r: DeviceResult) -> str:
         family, type_ = _device_label(r, manifest)
-        is_problem = r.verdict.value in _PROBLEM_VERDICTS
+        is_problem = r.verdict in _ordering.PROBLEM_VERDICTS
         row_cls = "problem" if is_problem else "ok"
         approx = (
             '<span class="approx" title="Geometry approximate (no metric LiDAR or '
@@ -162,7 +148,7 @@ def render_html(
             "<br>".join(_esc(n) for n in r.notes) if r.notes else '<span class="na">&mdash;</span>'
         )
         ident = "yes" if r.identity_confirmed else "no"
-        rows.append(
+        return (
             "<tr class='{cls}'>"
             "<td class='mono'>{did}</td>"
             "<td>{fam}<span class='sub'>{typ}</span></td>"
@@ -191,11 +177,42 @@ def render_html(
                 notes=notes,
             )
         )
+
+    # Grouped device table: a full-width subheader row per status group, then the
+    # device rows for that group. Group headers and rows are dynamic single-brace
+    # strings injected via the {rows} slot (not the static template).
+    groups = _ordering.grouped_results(report)
+    rows: list[str] = []
+    for verdict, results in groups:
+        vval = verdict.value
+        color = _VERDICT_COLORS.get(vval, "#455a64")
+        label = _ordering.VERDICT_LABELS.get(verdict, vval.upper())
+        rows.append(
+            f'<tr class="group {vval}"><td colspan="11">'
+            f'<span class="badge" style="background:{color}">{_esc(label)}</span> '
+            f"{len(results)}</td></tr>"
+        )
+        for r in results:
+            rows.append(_device_row(r))
     rows_html = (
         "\n".join(rows)
         if rows
         else ("<tr><td colspan='11' class='center na'>No devices in this report.</td></tr>")
     )
+
+    cov = _ordering.coverage(report)
+    coverage_gap = ""
+    if cov.unmatched > 0:
+        ids_html = ", ".join(_esc(i) for i in cov.unmatched_ids)
+        coverage_gap = (
+            '<section class="coverage-gap">'
+            f"<h2>Coverage gap &mdash; {cov.unmatched} device(s) not observed "
+            "in any shot</h2>"
+            f'<p class="ids mono">{ids_html}</p>'
+            "<p>These devices were not matched to any capture shot; their verdicts "
+            "rest on absence, not measurement.</p>"
+            "</section>"
+        )
 
     units_label = _esc(units) if units else "&mdash;"
     n_shots = len(capture.shots) if capture is not None else 0
@@ -208,6 +225,9 @@ def render_html(
         engine_version=_esc(report.engine_version) or "&mdash;",
         units_label=units_label,
         n_shots=n_shots,
+        coverage_matched=cov.matched,
+        coverage_total=cov.total,
+        coverage_gap=coverage_gap,
         chips=chips,
         rows=rows_html,
     )
@@ -283,6 +303,19 @@ _DOCUMENT = """<!DOCTYPE html>
   tbody tr:last-child td {{ border-bottom: none; }}
   tbody tr.problem {{ background: #fff8f1; }}
   tbody tr.problem td:first-child {{ box-shadow: inset 3px 0 0 #ef6c00; }}
+  tbody tr.group td {{
+    font-weight: 700; background: #f0f2f5; color: var(--ink);
+    text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px;
+  }}
+  tbody tr.group .badge {{ vertical-align: middle; margin-right: 6px; }}
+  .coverage-gap {{
+    border: 1px solid var(--line); border-left: 4px solid #ef6c00;
+    background: #fff8f1; border-radius: 10px; padding: 14px 18px;
+    margin-bottom: 22px;
+  }}
+  .coverage-gap h2 {{ margin: 0 0 8px; font-size: 14px; }}
+  .coverage-gap p {{ margin: 4px 0; color: #57606a; }}
+  .coverage-gap .ids {{ color: var(--ink); font-weight: 600; }}
   .mono {{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }}
   .num {{ text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }}
   .center {{ text-align: center; }}
@@ -315,12 +348,16 @@ _DOCUMENT = """<!DOCTYPE html>
       <div><span class="k">Engine</span><span class="v">{engine_version}</span></div>
       <div><span class="k">Units</span><span class="v">{units_label}</span></div>
       <div><span class="k">Shots in capture</span><span class="v">{n_shots}</span></div>
+      <div><span class="k">Coverage</span>
+        <span class="v">{coverage_matched} / {coverage_total} matched</span></div>
     </div>
   </header>
 
   <section class="summary">
     {chips}
   </section>
+
+  {coverage_gap}
 
   <section class="card">
     <h2>Per-device verdicts</h2>

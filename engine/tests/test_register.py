@@ -7,7 +7,12 @@ import pytest
 
 from ca_elevation_engine import geometry as geo
 from ca_elevation_engine import ingest
-from ca_elevation_engine.register import coarse_register, register_capture
+from ca_elevation_engine import pointcloud as pc
+from ca_elevation_engine.register import (
+    coarse_register,
+    refine_registration,
+    register_capture,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -87,3 +92,82 @@ def test_pin_offset_translates_camera():
     assert reg.camera_model_position[0] == pytest.approx(5.0, abs=1e-6)
     assert reg.camera_model_position[1] == pytest.approx(3.0, abs=1e-6)
     assert geo.angle_delta_deg(reg.camera_model_heading, 90) == pytest.approx(0, abs=1e-6)
+
+
+# --- refine_registration graceful degradation (headless, no heavy deps) ----- #
+def _shot_with_cloud(f01_capture_path, cloud_ref):
+    capture = ingest.load_capture(f01_capture_path)
+    shot = capture.shots[0]
+    shot.point_cloud = cloud_ref
+    return shot
+
+
+def test_refine_noop_without_point_cloud(f01_manifest_path, f01_capture_path):
+    manifest = ingest.load_manifest(f01_manifest_path)
+    capture = ingest.load_capture(f01_capture_path)
+    shot = capture.shots[0]
+    shot.point_cloud = None
+    reg = coarse_register(shot, manifest.level_by_id("L1"))
+    notes_before = list(reg.notes)
+    out = refine_registration(reg, shot, manifest, bundle_dir=None)
+    assert out.refined is False
+    assert out.notes == notes_before  # no new note
+
+
+def test_refine_degrades_without_bundle_dir(monkeypatch, f01_manifest_path, f01_capture_path):
+    manifest = ingest.load_manifest(f01_manifest_path)
+    shot = _shot_with_cloud(f01_capture_path, "clouds/s.ply")
+    reg = coarse_register(shot, manifest.level_by_id("L1"))
+
+    # Guard the "no heavy import attempted" promise: importing open3d/pye57 fails hard.
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _no_heavy(name, *args, **kwargs):
+        if name in ("open3d", "pye57"):
+            raise AssertionError(f"heavy backend imported: {name}")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _no_heavy)
+
+    out = refine_registration(reg, shot, manifest, bundle_dir=None)
+    assert out.refined is False
+    assert any("skipped ICP" in n for n in out.notes)
+
+
+def test_refine_degrades_when_file_missing(tmp_path, f01_manifest_path, f01_capture_path):
+    manifest = ingest.load_manifest(f01_manifest_path)
+    shot = _shot_with_cloud(f01_capture_path, "clouds/nope.ply")
+    reg = coarse_register(shot, manifest.level_by_id("L1"))
+    out = refine_registration(reg, shot, manifest, bundle_dir=str(tmp_path))
+    assert out.refined is False
+    assert any("not loadable" in n for n in out.notes)
+
+
+def test_register_capture_still_covers_all_shots_with_cloud_refs(
+    f01_manifest_path, f01_capture_path
+):
+    manifest = ingest.load_manifest(f01_manifest_path)
+    capture = ingest.load_capture(f01_capture_path)
+    for shot in capture.shots:
+        shot.point_cloud = "clouds/s.ply"
+    regs = register_capture(manifest, capture)  # bundle_dir=None
+    assert set(regs) == {s.id for s in capture.shots}
+    assert all(r.refined is False for r in regs.values())
+
+
+def test_refine_backend_missing_note_via_monkeypatch(
+    monkeypatch, f01_manifest_path, f01_capture_path
+):
+    manifest = ingest.load_manifest(f01_manifest_path)
+    shot = _shot_with_cloud(f01_capture_path, "clouds/s.ply")
+    reg = coarse_register(shot, manifest.level_by_id("L1"))
+
+    def _raise(*args, **kwargs):
+        raise pc.PointCloudBackendMissing("open3d not installed; cannot read this cloud")
+
+    monkeypatch.setattr(pc, "load_point_cloud", _raise)
+    out = refine_registration(reg, shot, manifest, bundle_dir="/whatever")
+    assert out.refined is False
+    assert any("backend missing" in n for n in out.notes)

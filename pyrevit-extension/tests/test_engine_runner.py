@@ -181,3 +181,128 @@ def test_validate_passes_capture_when_given():
     rec2 = _Recorder()
     engine_runner.validate("m.json", command=EngineCommand("ca-elevation", []), runner=rec2)
     assert "--capture" not in rec2.calls[0][0]
+
+
+# --- corrupt / decoupled report surfaces (FLOOR, mocked) ----------------- #
+def test_run_engine_corrupt_report_does_not_crash(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "verdict_report.json").write_text("{bad")
+    json_path = os.path.join(str(out), "verdict_report.json")
+    result = engine_runner.run_engine(
+        "m.json",
+        "c.json",
+        str(out),
+        command=EngineCommand("ca-elevation", []),
+        runner=_Recorder(returncode=0),
+        exists=lambda p: p == json_path,
+    )
+    assert result.report is None
+    assert result.status == EngineStatus.SUCCESS
+    assert result.ok is True
+
+
+def test_run_engine_report_present_despite_validation_exit(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "verdict_report.json").write_text(json.dumps({"summary": {"total": 1}}))
+    json_path = os.path.join(str(out), "verdict_report.json")
+    result = engine_runner.run_engine(
+        "m.json",
+        "c.json",
+        str(out),
+        command=EngineCommand("ca-elevation", []),
+        runner=_Recorder(returncode=1),
+        exists=lambda p: p == json_path,
+    )
+    assert result.report is not None
+    assert result.status == EngineStatus.VALIDATION_ERROR
+    assert not result.ok
+
+
+@pytest.mark.parametrize("fmt", ["html", "json"])
+def test_run_engine_format_flag_plumbed(tmp_path, fmt):
+    out = tmp_path / "out"
+    out.mkdir()
+    rec = _Recorder()
+    engine_runner.run_engine(
+        "m.json",
+        "c.json",
+        str(out),
+        command=EngineCommand("ca-elevation", []),
+        report_format=fmt,
+        runner=rec,
+        exists=lambda p: False,
+    )
+    argv = rec.calls[0][0]
+    assert argv[argv.index("--format") + 1] == fmt
+
+
+def test_run_engine_json_format_finds_no_pdf_html(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "verdict_report.json").write_text("{}")
+    json_path = os.path.join(str(out), "verdict_report.json")
+    result = engine_runner.run_engine(
+        "m.json",
+        "c.json",
+        str(out),
+        command=EngineCommand("ca-elevation", []),
+        report_format="json",
+        runner=_Recorder(),
+        exists=lambda p: p == json_path,  # only json present, no pdf/html
+    )
+    assert result.report_path is None
+
+
+def test_run_engine_no_report_on_disk(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    result = engine_runner.run_engine(
+        "m.json",
+        "c.json",
+        str(out),
+        command=EngineCommand("ca-elevation", []),
+        runner=_Recorder(returncode=2),
+        exists=lambda p: False,
+    )
+    assert result.report is None
+    assert result.report_path is None
+    assert result.status == EngineStatus.CRASH
+
+
+def test_validate_returns_completed_process_surface():
+    rec = _Recorder(returncode=1, stderr="bad manifest")
+    proc = engine_runner.validate("m.json", command=EngineCommand("ca-elevation", []), runner=rec)
+    assert proc.returncode == 1
+    argv = rec.calls[0][0]
+    assert "validate" in argv
+    assert "--capture" not in argv
+
+
+def test_run_engine_argv_order_is_stable(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    rec = _Recorder()
+    engine_runner.run_engine(
+        "M",
+        "C",
+        "O",
+        command=EngineCommand(config.CONSOLE_SCRIPT, []),
+        report_format="F",
+        runner=rec,
+        exists=lambda p: False,
+    )
+    argv = rec.calls[0][0]
+    assert argv == [
+        config.CONSOLE_SCRIPT,
+        "run",
+        "--manifest",
+        "M",
+        "--capture",
+        "C",
+        "--out",
+        "O",
+        "--format",
+        "F",
+    ]

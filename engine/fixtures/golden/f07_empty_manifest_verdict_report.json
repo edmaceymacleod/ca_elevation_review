@@ -1,0 +1,15 @@
+{
+  "device_results": [],
+  "engine_version": "0.1.0",
+  "generated_at": "2026-06-28T00:00:00Z",
+  "project_id": "demo-empty-07",
+  "schema_version": "1.0.0",
+  "summary": {
+    "absent": 0,
+    "flag": 0,
+    "pass": 0,
+    "total": 0,
+    "type_mismatch": 0
+  },
+  "units": "feet"
+}

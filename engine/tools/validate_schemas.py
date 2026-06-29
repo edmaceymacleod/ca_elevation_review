@@ -18,7 +18,12 @@ What it does, fail-closed (exit 1 on any error):
    is success -- the script is robust to fixtures not existing.
 
 Usage:
-    python engine/tools/validate_schemas.py [--schemas DIR] [--fixtures DIR] [-v]
+    python engine/tools/validate_schemas.py [--schemas DIR] [--fixtures DIR]
+        [--strict-unknown] [-v]
+
+The schema/fixture-validation core stays engine-free (only ``jsonschema``); the
+optional orphan-golden cross-check adds a guarded, best-effort ``registry`` import
+used only when the engine is importable, degrading to a NOTE otherwise.
 
 Exit codes:
     0  all schemas compile and all discovered fixtures validate
@@ -100,9 +105,18 @@ def compile_schemas(schemas_dir: Path, verbose: bool) -> tuple[dict[str, dict], 
 
 
 def validate_fixtures(
-    fixtures_dir: Path, schemas: dict[str, dict], verbose: bool
+    fixtures_dir: Path,
+    schemas: dict[str, dict],
+    verbose: bool,
+    *,
+    strict_unknown: bool = False,
 ) -> tuple[int, list[str]]:
-    """Validate every recognised fixture under fixtures_dir. Returns (count, errors)."""
+    """Validate every recognised fixture under fixtures_dir. Returns (count, errors).
+
+    When ``strict_unknown`` is True, any ``*.json`` matching no payload suffix
+    becomes a hard error (so a typo'd ``f0x.manfest.json`` cannot silently escape
+    validation) instead of only a NOTE. Default False = today's behavior.
+    """
     errors: list[str] = []
     checked = 0
     skipped: list[Path] = []
@@ -148,10 +162,16 @@ def validate_fixtures(
 
     if skipped:
         rels = ", ".join(str(p.relative_to(fixtures_dir)) for p in skipped)
-        print(
-            f"  NOTE: {len(skipped)} *.json file(s) matched no payload suffix, "
-            f"not validated: {rels}"
-        )
+        if strict_unknown:
+            errors.append(
+                f"{len(skipped)} *.json file(s) matched no payload suffix "
+                f"(--strict-unknown): {rels}"
+            )
+        else:
+            print(
+                f"  NOTE: {len(skipped)} *.json file(s) matched no payload suffix, "
+                f"not validated: {rels}"
+            )
 
     # Fail loudly if a report fixture exists but the report schema validated none
     # of them -- catches a future rename quietly dropping the golden from coverage.
@@ -170,6 +190,38 @@ def validate_fixtures(
     return checked, errors
 
 
+def check_registered_goldens(fixtures_dir: Path, verbose: bool) -> list[str]:
+    """Best-effort, engine-OPTIONAL cross-check: every registered golden exists.
+
+    Attempts ``from ca_elevation_engine import registry``. If it imports, assert
+    every golden filename in ``registry.SCENARIO_GOLDENS.values()`` exists
+    somewhere under ``fixtures_dir`` -- catching a deleted/renamed golden that the
+    registry still references. If the import fails (standalone run, engine not
+    installed), print a NOTE and return no errors (degrade gracefully).
+
+    Scope is deliberately "golden exists" only -- NOT "a matching manifest/capture
+    exists" -- because the registry maps scenario -> golden_filename and the
+    generic input-match is not derivable from that data model.
+    """
+    try:
+        from ca_elevation_engine import registry
+    except ImportError:
+        print("  NOTE: engine not importable; skipped registered-golden cross-check")
+        return []
+
+    present = {p.name for p in fixtures_dir.rglob("*.json")} if fixtures_dir.exists() else set()
+    errors: list[str] = []
+    for golden_name in registry.SCENARIO_GOLDENS.values():
+        if golden_name not in present:
+            errors.append(
+                f"registered golden {golden_name!r} not found under {fixtures_dir} "
+                "(deleted/renamed?)"
+            )
+        elif verbose:
+            print(f"  OK registered golden present: {golden_name}")
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -183,6 +235,11 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_FIXTURES_DIR,
         help="directory of fixture JSON payloads",
     )
+    parser.add_argument(
+        "--strict-unknown",
+        action="store_true",
+        help="treat any *.json that matches no payload suffix as a hard error",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="print each file checked")
     args = parser.parse_args(argv)
 
@@ -192,11 +249,16 @@ def main(argv: list[str] | None = None) -> int:
 
     fixture_count = 0
     fixture_errors: list[str] = []
+    orphan_errors: list[str] = []
     if not schema_errors:
         print(f"Validating fixtures in {args.fixtures}")
-        fixture_count, fixture_errors = validate_fixtures(args.fixtures, schemas, args.verbose)
+        fixture_count, fixture_errors = validate_fixtures(
+            args.fixtures, schemas, args.verbose, strict_unknown=args.strict_unknown
+        )
+        print("Cross-checking registered goldens")
+        orphan_errors = check_registered_goldens(args.fixtures, args.verbose)
 
-    all_errors = schema_errors + fixture_errors
+    all_errors = schema_errors + fixture_errors + orphan_errors
     print()
     print(f"Schemas compiled: {len(schemas)}")
     print(f"Fixtures validated: {fixture_count}")

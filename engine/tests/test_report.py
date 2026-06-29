@@ -30,10 +30,18 @@ from ca_elevation_engine.models import (
     VerdictReport,
 )
 from ca_elevation_engine.report import (
+    _ordering,
     render_html,
     render_json,
     render_report,
     summarize,
+)
+from ca_elevation_engine.report import html as html_mod
+from ca_elevation_engine.report import pdf as pdf_mod
+from ca_elevation_engine.report._ordering import (
+    coverage,
+    grouped_results,
+    ordered_results,
 )
 
 # A note containing markup we expect to be escaped in HTML output.
@@ -294,3 +302,203 @@ def test_unsupported_format_raises(tmp_path):
     report, manifest, capture = _report(), _manifest(), _capture()
     with pytest.raises(ValueError):
         render_report(report, manifest, capture, str(tmp_path / "x.docx"), fmt="docx")
+
+
+def _all_matched_report() -> VerdictReport:
+    """A report where every device has a matched_shot_id (no coverage gap)."""
+    rep = _report()
+    for r in rep.device_results:
+        r.matched_shot_id = "SHOT-A"
+    return rep
+
+
+def _empty_report() -> VerdictReport:
+    return VerdictReport(
+        schema_version="1.0.0",
+        project_id="proj-42",
+        device_results=[],
+        units="feet",
+        generated_at="2026-06-28T12:00:00Z",
+        engine_version="0.1.0",
+    )
+
+
+# --------------------------------------------------------------------------- #
+# _ordering helper (§6.1)
+# --------------------------------------------------------------------------- #
+@pytest.mark.unit
+def test_ordered_results_problems_first():
+    ids = [r.device_id for r in ordered_results(_report())]
+    assert ids == ["DEV-002", "DEV-003", "DEV-004", "DEV-001"]
+
+
+@pytest.mark.unit
+def test_grouped_results_buckets_and_omits_empty():
+    rep = VerdictReport(
+        schema_version="1.0.0",
+        project_id="p",
+        device_results=[
+            DeviceResult(device_id="B", verdict=Verdict.PASS, confidence=1.0),
+            DeviceResult(device_id="A", verdict=Verdict.PASS, confidence=1.0),
+            DeviceResult(device_id="C", verdict=Verdict.FLAG, confidence=0.5),
+        ],
+    )
+    groups = grouped_results(rep)
+    assert [v for v, _ in groups] == [Verdict.FLAG, Verdict.PASS]
+    flag_ids = [r.device_id for r in groups[0][1]]
+    pass_ids = [r.device_id for r in groups[1][1]]
+    assert flag_ids == ["C"]
+    assert pass_ids == ["A", "B"]  # sorted by id within group
+
+
+@pytest.mark.unit
+def test_coverage_counts_unmatched():
+    cov = coverage(_report())
+    assert cov.total == 4
+    assert cov.matched == 3
+    assert cov.unmatched == 1
+    assert cov.unmatched_ids == ["DEV-003"]
+
+
+@pytest.mark.unit
+def test_coverage_empty_report():
+    cov = coverage(_empty_report())
+    assert cov.total == 0
+    assert cov.matched == 0
+    assert cov.unmatched == 0
+    assert cov.unmatched_ids == []
+
+
+# --------------------------------------------------------------------------- #
+# HTML grouped + coverage (§6.2)
+# --------------------------------------------------------------------------- #
+@pytest.mark.unit
+def test_html_groups_by_status():
+    html = render_html(_report(), _manifest(), _capture())
+    assert 'class="group flag"' in html
+    assert 'class="group absent"' in html
+    assert 'class="group type_mismatch"' in html
+    assert 'class="group pass"' in html
+    assert html.index('class="group flag"') < html.index('class="group pass"')
+
+
+@pytest.mark.unit
+def test_html_coverage_line():
+    html = render_html(_report(), _manifest(), _capture())
+    assert "3 / 4 matched" in html
+
+
+_GAP_SECTION = '<section class="coverage-gap">'
+
+
+@pytest.mark.unit
+def test_html_coverage_gap_callout():
+    html = render_html(_report(), _manifest(), _capture())
+    assert _GAP_SECTION in html
+    assert "DEV-003" in html
+    assert "rest on absence, not measurement" in html
+    # The callout lists only DEV-003; DEV-002 is matched and must not appear in it.
+    callout = html[html.index(_GAP_SECTION) :]
+    callout = callout[: callout.index("</section>")]
+    assert "DEV-003" in callout
+    assert "DEV-002" not in callout
+
+
+@pytest.mark.unit
+def test_html_no_coverage_gap_when_all_matched():
+    # The CSS class name lives in the static <style>; assert the *section* is absent.
+    html = render_html(_all_matched_report(), _manifest(), _capture())
+    assert _GAP_SECTION not in html
+
+
+@pytest.mark.unit
+def test_html_empty_report_valid():
+    html = render_html(_empty_report(), _manifest(), _capture())
+    assert html.lstrip().startswith("<!DOCTYPE html>")
+    assert "No devices" in html
+    assert _GAP_SECTION not in html
+
+
+@pytest.mark.unit
+def test_html_escapes_xss_in_grouped_markup():
+    html = render_html(_report(), _manifest(), _capture())
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+# --------------------------------------------------------------------------- #
+# JSON / text contract (§6.3)
+# --------------------------------------------------------------------------- #
+@pytest.mark.unit
+def test_text_uses_shared_ordering():
+    report = _report()
+    text = summarize(report)
+    expected = [
+        r.device_id for r in ordered_results(report) if r.verdict in _ordering.PROBLEM_VERDICTS
+    ]
+    positions = [text.index(did) for did in expected]
+    assert positions == sorted(positions)
+
+
+# --------------------------------------------------------------------------- #
+# Determinism (HTML) (§6.4)
+# --------------------------------------------------------------------------- #
+@pytest.mark.unit
+def test_html_deterministic():
+    a = render_html(_report(), _manifest(), _capture())
+    b = render_html(_report(), _manifest(), _capture())
+    assert a == b
+
+
+# --------------------------------------------------------------------------- #
+# Graceful degradation (§6.6) -- runs even though reportlab IS installed
+# --------------------------------------------------------------------------- #
+def _raise_missing_backend():
+    from ca_elevation_engine.report.pdf import MissingPdfBackend
+
+    raise MissingPdfBackend("simulated absence")
+
+
+@pytest.mark.unit
+def test_render_pdf_missing_backend_raises(tmp_path, monkeypatch):
+    from ca_elevation_engine.report.pdf import MissingPdfBackend
+
+    monkeypatch.setattr(pdf_mod, "_require_reportlab", _raise_missing_backend)
+    with pytest.raises(MissingPdfBackend):
+        pdf_mod.render_pdf(_report(), _manifest(), _capture(), str(tmp_path / "x.pdf"))
+
+
+@pytest.mark.unit
+def test_pipeline_falls_back_to_html_without_reportlab(tmp_path, monkeypatch):
+    from ca_elevation_engine.pipeline import run_pipeline
+
+    monkeypatch.setattr(pdf_mod, "_require_reportlab", _raise_missing_backend)
+    result = run_pipeline(
+        _manifest(),
+        _capture(),
+        out_dir=str(tmp_path),
+        report_format="pdf",
+        generated_at="2026-06-28T12:00:00Z",
+    )
+    assert "html" in result.written
+    html_path = result.written["html"]
+    from pathlib import Path
+
+    assert Path(html_path).exists()
+    assert Path(html_path).read_text(encoding="utf-8").lstrip().startswith("<!DOCTYPE html>")
+    assert any("Falling back to HTML" in w for w in result.warnings)
+
+
+# --------------------------------------------------------------------------- #
+# Anti-drift guard (ranking only) (§6.7)
+# --------------------------------------------------------------------------- #
+@pytest.mark.unit
+def test_renderers_share_ranking():
+    assert _ordering.VERDICT_DISPLAY_ORDER == (
+        Verdict.FLAG,
+        Verdict.ABSENT,
+        Verdict.TYPE_MISMATCH,
+        Verdict.PASS,
+    )
+    assert not hasattr(pdf_mod, "_VERDICT_ORDER")
+    assert not hasattr(html_mod, "_VERDICT_SORT_RANK")

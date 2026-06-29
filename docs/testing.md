@@ -34,6 +34,35 @@ Rules:
 - Fixture filename convention routes schema validation:
   `*.manifest.json`, `*.capture.json`, `*.report.json`.
 
+### Synthetic scenario corpus
+
+The synthetic scenarios (seeders under `engine/fixtures/seeders/`, payloads under
+`synthetic/`, goldens under `golden/`) each pin a distinct set of verdict paths so
+an accidental engine/geometry change is caught by a golden diff plus the
+intent-pinning assertions in `tests/test_integration_golden.py`:
+
+| Scenario | Verdict paths it pins | Golden |
+|---|---|---|
+| `f01_synthetic_office` | one of every verdict class (pass/flag/absent/type_mismatch), gap vs in-coverage absence | `f01_verdict_report.json` |
+| `f02_multilevel_datum` | mounting-height datum via `z - level.elevation` across 2 levels; explicit `mounting_height` PASS vs height FLAG | `f02_multilevel_datum_verdict_report.json` |
+| `f03_tolerance_boundary` | position/height/orientation just-inside (PASS) vs just-outside (FLAG); per-device tolerance override both ways | `f03_tolerance_boundary_verdict_report.json` |
+| `f04_coverage_orientation` | in-coverage ABSENT (0.7) vs coverage-gap ABSENT (0.25); orientation FLAG via `facing_angle`; `up_axis="down"` no-op PASS | `f04_coverage_orientation_verdict_report.json` |
+| `f05_distinctions` | TYPE_MISMATCH vs ABSENT vs FLAG vs low-confidence-detected-type non-mismatch (confidence gate) | `f05_distinctions_verdict_report.json` |
+| `f06_device_wall` | dense 12-device association under crowding; wrong-type decoy tie-break | `f06_device_wall_verdict_report.json` |
+| `f07_empty_manifest` | zero-device manifest; empty `device_results`, all-zero summary | `f07_empty_manifest_verdict_report.json` |
+
+Goldens are machine-generated, never hand-typed. Regenerate after an intentional
+engine change with `python -m fixtures.seeders.regen_goldens` (run from `engine/`);
+a changed golden must be a deliberate, reviewed diff.
+
+> **Registration-note invariant.** Registration notes for the *matched shot* now
+> reach `device_results[].notes` (prefixed `registration:`). If a fixture's matched
+> shot gains a registration note (e.g. it sets `point_cloud`, or its `coarse_register`
+> emits the pose+pin-only "approximate" note because it has *neither* `depth_map` nor
+> `point_cloud`), the golden's `notes` array changes -- **regenerate the golden** and
+> record the diff. Today no synthetic fixture sets `point_cloud` and the f0x captures
+> carry `depth_map`, so this note does not fire and goldens are unaffected.
+
 ## 2. Registry as single source of truth + coverage ratchets
 
 A **registry** (`engine/src/ca_elevation_engine/registry.py`) declares every

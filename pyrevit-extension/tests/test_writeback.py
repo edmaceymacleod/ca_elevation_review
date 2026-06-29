@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import logging
+import os
+import shutil
 
+import pytest
 from ca_elevation_revit import writeback
 from ca_elevation_revit.writeback import SENTINEL_COLOR, VERDICT_COLORS
 
@@ -57,3 +60,25 @@ def test_overrides_skips_result_without_device_id():
     report = {"device_results": [{"verdict": "pass"}, {"device_id": "uid-2", "verdict": "absent"}]}
     overrides = writeback.overrides_for_report(report)
     assert [o.device_id for o in overrides] == ["uid-2"]
+
+
+# --- engine round-trip (ENGINE, 3.10+) ----------------------------------- #
+@pytest.mark.engine
+def test_overrides_from_real_engine_report(tmp_path, engine_fixtures_dir):
+    """Feed a REAL verdict report into overrides_for_report (key-contract guard)."""
+    from ca_elevation_revit import engine_runner
+
+    if shutil.which("ca-elevation") is None:
+        pytest.fail("ca-elevation not on PATH; the engine must be installed on the 3.10+ jobs")
+
+    manifest = os.path.join(engine_fixtures_dir, "f01_office.manifest.json")
+    capture = os.path.join(engine_fixtures_dir, "f01_office.capture.json")
+    out = tmp_path / "out"
+    result = engine_runner.run_engine(manifest, capture, str(out))
+    assert result.report is not None, result.stderr
+
+    overrides = writeback.overrides_for_report(result.report)
+    assert len(overrides) == len(result.report["device_results"])
+    # Every verdict the real report emits is a KNOWN verdict (no sentinel drift).
+    for o in overrides:
+        assert writeback.is_known_verdict(o.verdict)

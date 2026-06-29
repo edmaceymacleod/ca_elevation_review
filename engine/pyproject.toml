@@ -60,6 +60,10 @@ ca_elevation_engine = ["schemas/*.json", "py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Put the engine/ dir on sys.path so the `fixtures` package (engine/fixtures/)
+# imports under a plain `pytest` invocation, not just `python -m pytest` (which
+# implicitly adds the cwd). CI runs plain `pytest`.
+pythonpath = ["."]
 markers = [
     "unit: pure headless unit tests (no heavy deps, no device, no Revit)",
     "integration: engine over fixture capture packages against golden reports",

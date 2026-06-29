@@ -95,7 +95,18 @@ ingest -> coarse georeference -> refine registration -> locate devices
 1. **Ingest** manifest + capture package; validate both against their schemas.
 2. **Coarse georeference** from pin + heading -> initial transform to model coords.
 3. **Refine** by registering the capture to nearby model geometry (point-cloud
-   ICP and/or 2D photo-to-elevation registration), seeded by step 2.
+   ICP and/or 2D photo-to-elevation registration), seeded by step 2. The
+   implemented point-cloud path (`pointcloud.py` loader + `register.refine_registration`)
+   loads the shot's E57/PLY cloud (optional `[heavy]` Open3D/pye57 backend) and runs
+   **local rigid, no-scale** point-to-point ICP against a sparse, **floor-weighted**,
+   device-derived model surface. It corrects small floor-height and planar drift in an
+   already-good coarse transform; it is rigid (no scale), local (it will not rescue a
+   wrong pin), and blind behind walls. Part of the target is seeded from *expected*
+   device positions, so refinement must **not** be read as evidence a device is present
+   -- it only sharpens the transform. The ICP residual (RMSE) is propagated to the
+   matched device's report `notes` (no schema change). When the backend, bundle dir, or
+   cloud file is absent it degrades to the coarse transform with an explanatory note, so
+   the headless default suite runs with zero heavy deps.
 4. **Locate** each expected device in view (geometry candidates + vision typing).
 5. **Compare** position/height/orientation deltas; assess presence and type.
 6. **Verdict** via the per-device tolerance ruleset, each with a confidence;

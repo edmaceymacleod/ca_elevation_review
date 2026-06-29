@@ -41,9 +41,10 @@ What CI runs (mirror it locally before pushing):
 ```bash
 ruff check engine
 ruff format --check engine
-cd engine && mypy                           # non-blocking in CI, but fix what you can
+cd engine && mypy                           # blocking in CI
 cd engine && pytest -q -m "not heavy" --cov=ca_elevation_engine
-python engine/tools/validate_schemas.py -v  # JSON Schema + fixture validation
+python engine/tools/validate_schemas.py -v --strict-unknown  # schemas + fixtures
+python engine/tools/regen_fixtures.py --check                # fixtures match seeders
 ```
 
 Config lives in `engine/pyproject.toml`: ruff (line length 100; rules E/F/I/W/UP/B),
@@ -118,6 +119,33 @@ read it and never write it.**
 Fixture filename convention (so the validator can route them):
 `*.manifest.json` -> spec manifest, `*.capture.json` -> capture package,
 `*.report.json` -> verdict report.
+
+Goldens are machine-generated, never hand-edited. After an **intentional** engine
+change, regenerate the synthetic-scenario payloads + goldens (f02-f07) by running,
+from `engine/`:
+
+```bash
+python -m fixtures.seeders.regen_goldens
+```
+
+This re-runs the real pipeline and rewrites each `golden/*_verdict_report.json`
+deterministically (it never touches f01). A changed golden must be an intentional,
+reviewed diff -- if regen produces a diff you did not expect, treat it as a
+regression, not a fixture update.
+
+> **Regenerating fixtures (the one-stop tool).** Fixtures (manifest, capture,
+> golden) are generated, never hand-edited. To change a scenario, edit its seeder
+> under `engine/fixtures/seeders/` then run `python engine/tools/regen_fixtures.py`
+> to rewrite the committed files for **every** registered scenario, and review the
+> diff. CI runs `python engine/tools/regen_fixtures.py --check` and fails if the
+> committed fixtures drift from their seeders. If an intentional engine change
+> moves a golden, the same command updates it -- commit that as a reviewed diff. A
+> **package version bump** also moves the golden's `engine_version`; re-run regen
+> as part of the bump PR. (`regen_fixtures.py` derives every file from each
+> seeder's `build_manifest()` / `build_capture()` plus the engine pipeline, so it
+> is generic over scenarios and the serialization is byte-locked: synthetic
+> payloads are authored-order with no trailing newline, goldens are the engine's
+> key-sorted `render_json` with a trailing newline.)
 
 ## Registry + coverage ratchet (design principle #2)
 

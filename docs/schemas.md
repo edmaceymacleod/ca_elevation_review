@@ -115,8 +115,14 @@ Top level (required: `schema_version`, `project_id`, `shots`):
 - `rgb_image` -- relative path to the RGB image.
 - `depth_map` -- relative path to a raw **float32 depth map in meters**, row-major
   HxW; if present, `depth_size` (`[height, width]`) is required.
-- `point_cloud` -- relative path to an E57/PLY cloud, an alternative to
-  `depth_map`.
+- `point_cloud` -- relative path to an E57/PLY/PCD/XYZ/PTS cloud, an alternative
+  to `depth_map`. When the optional `[heavy]` backend (Open3D/pye57) is present
+  and the engine is run with the capture bundle dir, the cloud is loaded
+  (`ca_elevation_engine.pointcloud`) and used to **refine** the coarse
+  `arkit_to_model` transform via local rigid (no-scale) point-to-point ICP. The
+  path is resolved bundle-relative and rejected if it escapes the bundle. Absence
+  of the backend, the file, or the bundle dir degrades gracefully to the coarse
+  transform with an explanatory note (see `device_results[].notes` below).
 - `intrinsics` -- pinhole camera: `fx`, `fy` (>0), `cx`, `cy`, `width`, `height`.
 - `pose` -- the 16-number 4x4 camera-to-world matrix described above.
 - `pin` -- the georeference anchor (required `x`, `y`, `heading`): floorplan pixel
@@ -157,4 +163,16 @@ Top level (required: `schema_version`, `project_id`, `device_results`, `summary`
 - `approximate` -- boolean (default `false`); true when geometry was derived
   without metric LiDAR or from a protruding/occluded device. The report never
   claims sub-inch accuracy.
-- `notes[]` -- free-form strings.
+- `notes[]` -- free-form strings. Registration notes for the **matched shot** are
+  propagated here (prefixed `registration:`), including any ICP refinement
+  residual.
+
+> **ICP refinement honesty.** When a posed point cloud is present, ICP aligns it
+> to a sparse, **floor-weighted**, device-derived model surface. It corrects small
+> floor-height and planar drift in an already-good coarse transform; it is rigid
+> (no scale), local (won't fix a wrong pin), and blind behind walls. Because part
+> of the target is seeded from *expected* device positions, ICP must not be read as
+> evidence a device is present -- it only sharpens the camera transform. The
+> residual (RMSE) is reported in each affected device's `notes` (no new schema
+> field) so reviewers can judge how much to trust the refinement. There is no
+> sub-inch claim.
