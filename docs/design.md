@@ -1,7 +1,7 @@
 # As-Built Elevation Verification Tool -- design sketch
 
 **Status:** Draft -- last updated 2026-06-29. Architecture and UX sketch for this repo
-(working name **PlumbAR**, TBD). The repo is now scaffolded and this document lives in its `docs/`.
+(**CA Elevation Review** -- name decided). The repo is now scaffolded and this document lives in its `docs/`.
 Phase 0 (engine + fixtures + CI) is in progress -- see [`../README.md`](../README.md) for the
 current build state.
 
@@ -307,18 +307,19 @@ The license stays Apache-2.0 regardless.
 
 ## Open questions
 
-1. **Name.** Working name PlumbAR; alternatives welcome.
-2. **Bundle transfer mechanism.** AirDrop vs iCloud Drive vs Files vs cable -- pick the default
+The app name is **decided: CA Elevation Review** (no longer open).
+
+1. **Bundle transfer mechanism.** AirDrop vs iCloud Drive vs Files vs cable -- pick the default
    round-trip UX (local-only, no sync server).
-3. **Revit version targets.** Which years does the Revit front door support at launch? The legacy
+2. **Revit version targets.** Which years does the Revit front door support at launch? The legacy
    C# add-in targets 2024-2027; the pyRevit version floor is still open (see
    [`pyrevit-migration-plan.md`](pyrevit-migration-plan.md)).
-4. **Minimum iPhone.** Confirm iPhone Pro w/ LiDAR; which generation floor.
-5. **Vision model for device typing.** On-device CoreML in the app vs desktop-side in the engine;
+3. **Minimum iPhone.** Confirm iPhone Pro w/ LiDAR; which generation floor.
+4. **Vision model for device typing.** On-device CoreML in the app vs desktop-side in the engine;
    which model; how much it is leaned on given identity stays human-confirmed in v1.
-6. **Report format.** PDF vs HTML as the primary deliverable.
-7. **Manifest + capture-package schema.** Lock the field list and JSON-Schema before Phase 0 tests.
+5. **Report format.** PDF vs HTML as the primary deliverable.
+6. **Manifest + capture-package schema.** Lock the field list and JSON-Schema before Phase 0 tests.
 
 ---
 
-*Working name: PlumbAR (TBD). Last updated: 2026-06-29.*
+*Name: CA Elevation Review (decided). Last updated: 2026-06-29.*

@@ -127,18 +127,22 @@ so `xcodegen generate` compiles it automatically — never hand-edit the
 
 ## Open questions (decide before v1 ship)
 
-These are unresolved and intentionally *not* baked in yet:
+**Decided:**
 
-- **App name.** Owned by `docs/design.md` §"Open questions" (working name
-  *PlumbAR*) — that is the single place the name gets decided; this doc does not
-  duplicate it. For reference, `CFBundleDisplayName` is currently "CA Elevation
-  Review", and the name should be settled before the icon art is final.
+- **App name — CA Elevation Review.** Settled in `docs/design.md` §"Open
+  questions" and shipped as `CFBundleDisplayName` in `project.yml`. Listed here
+  only as a pointer; the name is owned by the design doc. Final icon art can now
+  proceed against it.
+- **Accent shade — blueprint field blue (locked).** The `AccentColor` values
+  above (light `#1C6DD0`, dark `#4D9BFF`) are now the chosen brand blue, not a
+  placeholder default. Change them only with a deliberate branding decision.
+
+Still unresolved and intentionally *not* baked in yet:
+
 - **Final app icon.** The committed icon is a placeholder (see above).
 - **Launch screen.** `project.yml` ships an empty `UILaunchScreen: {}` (system
   default). Decide whether a branded launch screen is worth it — by this doc's
-  policy, probably not until there's a name and an icon.
-- **Accent shade.** The blue above is a sensible default, not a chosen brand
-  color. Revisit once naming/branding is settled.
+  policy, probably not until there's a final icon.
 
 This doc owns only the look-and-feel decisions (icon, launch screen, accent
 shade) — when one is settled, record it here and delete it from this list.
