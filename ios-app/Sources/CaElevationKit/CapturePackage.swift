@@ -81,7 +81,7 @@ public struct Shot: Codable, Equatable, Sendable {
     public var capturedAt: String?
     /// Optional pre-extracted device observations (synthetic fixtures / vision
     /// backend output channel). Not produced by the v1 capture app.
-    public var observations: [Observation]?
+    public var observations: [ShotObservation]?
 
     public init(
         id: String,
@@ -95,7 +95,7 @@ public struct Shot: Codable, Equatable, Sendable {
         pose: [Double],
         pin: Pin,
         capturedAt: String? = nil,
-        observations: [Observation]? = nil
+        observations: [ShotObservation]? = nil
     ) {
         self.id = id
         self.levelId = levelId
@@ -175,9 +175,9 @@ public struct Pin: Codable, Equatable, Sendable {
     }
 }
 
-// MARK: - Observation (passthrough; not produced by v1 capture)
+// MARK: - ShotObservation (passthrough; not produced by v1 capture)
 
-public struct Observation: Codable, Equatable, Sendable {
+public struct ShotObservation: Codable, Equatable, Sendable {
     public var position: Point3
     public var mountingHeight: Double?
     public var facingAngle: Double?
