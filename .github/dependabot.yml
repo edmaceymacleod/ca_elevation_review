@@ -1,0 +1,59 @@
+# Dependabot keeps the CI lock and GitHub Actions current on a schedule, so
+# dependency drift surfaces in a reviewable weekly PR instead of randomly
+# turning a feature PR red (see engine/requirements-dev.txt for the why).
+version: 2
+updates:
+  # Engine Python deps: bumps the pinned versions in requirements-dev.txt and
+  # the floors in pyproject.toml. Grouped so a routine refresh is one PR.
+  - package-ecosystem: pip
+    directory: /engine
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "06:13"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      engine-dev-toolchain:
+        patterns:
+          - ruff
+          - mypy
+          - mypy_extensions
+          - pytest
+          - pytest-cov
+          - coverage
+          - pluggy
+          - iniconfig
+      engine-runtime:
+        patterns:
+          - numpy
+          - jsonschema*
+          - referencing
+          - attrs
+          - rpds-py
+          - reportlab
+          - pillow
+          - jinja2
+          - markupsafe
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "deps"
+
+  # GitHub Actions: bump checkout/setup-python/paths-filter/gitleaks etc.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday
+      time: "06:13"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "ci"
