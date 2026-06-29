@@ -104,11 +104,23 @@ repos:
         pass_filenames: false
         stages: [manual]
 
-      # Swift: swift-format / swiftlint on the iOS app. Manual only -- needs the
-      # Swift toolchain (macOS). Either tool works; swift-format shown here.
+      # Swift: swift-format + swiftlint on the iOS app. Manual only -- both need
+      # the Swift toolchain (macOS). swift-format checks formatting; swiftlint
+      # enforces the lint rules and gates the same way CI does.
       - id: swift-format
         name: swift-format (ios-app)
         entry: bash -c 'swift format lint --recursive ios-app/Sources ios-app/Tests'
+        language: system
+        files: ^ios-app/.*\.swift$
+        pass_filenames: false
+        stages: [manual]
+
+      # SwiftLint, mirroring the CaElevationKit (macos) CI job: lints against the
+      # same .swiftlint.yml and, when the committed baseline exists, gates on NEW
+      # violations only -- so a clean local run means a clean CI lint.
+      - id: swiftlint
+        name: swiftlint (ios-app)
+        entry: bash -c 'cd ios-app && swiftlint lint --config .swiftlint.yml $([ -f .swiftlint-baseline.json ] && echo --baseline .swiftlint-baseline.json)'
         language: system
         files: ^ios-app/.*\.swift$
         pass_filenames: false
