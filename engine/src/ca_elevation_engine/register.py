@@ -134,25 +134,123 @@ def coarse_register(shot: Shot, level: Level, units: str = "feet") -> ShotRegist
     )
 
 
+# Residual at/above this (project units) is treated as an uncertain refinement:
+# confidence is NOT raised and a "high residual" note is emitted.
+HIGH_RESIDUAL_FT = 0.25
+
+
 def refine_registration(
     reg: ShotRegistration, shot: Shot, manifest: SpecManifest, bundle_dir: str | None = None
 ) -> ShotRegistration:
-    """Optional fine registration via ICP against model geometry.
+    """Optional fine registration via ICP against model surfaces.
 
-    No-ops (returns ``reg`` unchanged) unless a point cloud is present and the
-    optional heavy backend (Open3D) is importable. This keeps the headless unit
-    path real while leaving a documented seam for the metric refinement.
+    Local rigid (no-scale) point-to-point ICP of the shot's point cloud (brought
+    into the model frame by the coarse transform) against a sparse, floor-weighted
+    model-surface target. Folds the correction into ``reg.arkit_to_model`` and sets
+    ``reg.refined`` / ``reg.residual``.
+
+    Degrades on ANY failure (never raises out of this function): a missing
+    ``bundle_dir``, a missing/unreadable cloud file, an absent heavy backend, or an
+    ICP error all leave the coarse transform untouched and append an explanatory
+    note. With no ``point_cloud`` it is a silent no-op.
+
+    Honesty: this corrects small floor-height and planar drift in an already-good
+    coarse transform; it is rigid (no scale), local (won't fix a wrong pin), and
+    blind behind walls. Part of the target is seeded from EXPECTED device positions,
+    so refinement must not be read as evidence a device is present.
     """
     if shot.point_cloud is None:
         return reg
-    try:  # pragma: no cover - exercised only with heavy extras installed
-        import open3d  # noqa: F401
-    except Exception:
-        reg.notes.append("point cloud present but Open3D not installed: skipped ICP refinement")
+
+    from . import pointcloud as pc
+
+    try:
+        pts = pc.load_point_cloud(shot.point_cloud, bundle_dir)
+    except pc.PointCloudBackendMissing as exc:
+        reg.notes.append(f"point cloud present but backend missing: {exc}; skipped ICP")
         return reg
-    # pragma: no cover - real ICP needs model surfaces + the heavy backend.
-    reg.notes.append("ICP refinement hook reached (not yet implemented in v1)")
+    except (FileNotFoundError, ValueError) as exc:  # incl. PointCloudPathError
+        reg.notes.append(f"point cloud not loadable ({exc}); skipped ICP refinement")
+        return reg
+
+    target = pc.model_surface_target(manifest, shot.level_id)
+    if target is None:
+        reg.notes.append("no model surfaces to align to on this level; skipped ICP")
+        return reg
+
+    try:
+        correction, rmse = _icp_refine(reg, pts, target)
+    except pc.PointCloudBackendMissing as exc:
+        reg.notes.append(f"point cloud present but backend missing: {exc}; skipped ICP")
+        return reg
+    except Exception as exc:  # noqa: BLE001 - degrade, never propagate
+        reg.notes.append(f"ICP failed ({exc}); kept coarse registration")
+        return reg
+
+    reg.arkit_to_model = correction @ reg.arkit_to_model
+    reg.refined = True
+    reg.residual = rmse
+    reg.camera_model_position = geo.transform_point(
+        reg.arkit_to_model, geo.camera_position(shot.pose)
+    )
+    reg.camera_model_heading = geo.heading_of_pose_deg_from_matrix(reg.arkit_to_model, shot.pose)
+
+    if rmse < HIGH_RESIDUAL_FT:
+        reg.confidence = min(0.9, reg.confidence + 0.15)
+    else:
+        reg.notes.append(f"high ICP residual (rmse={rmse:.4f}); refinement uncertain")
+
+    units = manifest.project.units
+    n_pts = len(pts)
+    reg.notes.append(
+        f"ICP refinement applied: rmse={rmse:.4f} {units}, {n_pts} pts (rigid, no scale; "
+        "aligned to sparse floor+device surfaces)"
+    )
     return reg
+
+
+def _icp_refine(
+    reg: ShotRegistration,
+    source_pts: np.ndarray,
+    target_pts: np.ndarray,
+    *,
+    max_corr: float = 0.5,
+    max_iter: int = 50,
+) -> tuple[np.ndarray, float]:  # pragma: no cover - heavy
+    """Lazy Open3D point-to-point rigid ICP.
+
+    Returns ``(correction_4x4, rmse)`` where ``correction`` is a model->model rigid
+    transform to LEFT-multiply onto ``arkit_to_model``. The source cloud is brought
+    into model space by the coarse transform (vectorized, no per-point loop).
+    """
+    try:
+        import open3d as o3d  # lazy
+    except Exception as exc:
+        from . import pointcloud as pc
+
+        raise pc.PointCloudBackendMissing("open3d not installed; cannot run ICP") from exc
+    from . import pointcloud as pc
+
+    R = reg.arkit_to_model[:3, :3]
+    t = reg.arkit_to_model[:3, 3]
+    src_model = (R @ source_pts.T).T + t  # vectorized, (N,3)
+    src_model = pc._downsample(src_model, voxel=0.1)
+
+    src = o3d.geometry.PointCloud()
+    src.points = o3d.utility.Vector3dVector(src_model)
+    tgt = o3d.geometry.PointCloud()
+    tgt.points = o3d.utility.Vector3dVector(target_pts)
+
+    result = o3d.pipelines.registration.registration_icp(
+        src,
+        tgt,
+        max_corr,
+        np.eye(4),
+        o3d.pipelines.registration.TransformationEstimationPointToPoint(with_scaling=False),
+        o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=max_iter),
+    )
+    correction = np.asarray(result.transformation, dtype=np.float64)
+    return correction, float(result.inlier_rmse)
 
 
 def register_capture(manifest: SpecManifest, capture, bundle_dir: str | None = None):

@@ -8,6 +8,7 @@ golden update in the same change.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -35,12 +36,23 @@ def test_every_scenario_has_seeder_and_golden():
         assert golden_path.exists(), f"scenario {scenario} missing golden {golden_path}"
 
 
-def test_golden_demonstrates_every_verdict_class(f01_golden):
-    """The fixture suite must exercise every emittable verdict class."""
-    seen = {r["verdict"] for r in f01_golden["device_results"]}
+def test_golden_demonstrates_every_verdict_class():
+    """The fixture suite must exercise every emittable verdict class.
+
+    Unions verdicts across ALL scenario goldens so the coverage ratchet
+    considers the whole corpus, not just f01.
+    """
+    seen: set[str] = set()
+    for golden_name in registry.SCENARIO_GOLDENS.values():
+        g = json.loads((FIXTURES / "golden" / golden_name).read_text())
+        seen |= {r["verdict"] for r in g["device_results"]}
     required = {v.value for v in registry.VERDICTS}
     missing = required - seen
     assert not missing, f"no golden case demonstrates verdict(s): {sorted(missing)}"
+
+
+def test_scenario_payload_stems_complete():
+    assert set(registry.SCENARIO_PAYLOAD_STEMS) == set(registry.SCENARIO_GOLDENS)
 
 
 def test_check_ratchet_count():

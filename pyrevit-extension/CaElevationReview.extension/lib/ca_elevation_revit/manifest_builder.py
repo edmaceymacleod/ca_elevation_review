@@ -16,10 +16,32 @@ surface only late, at register/render).
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Dict, Optional, Sequence
 
 SCHEMA_VERSION = "1.0.0"
+
+_VALID_UNITS = ("feet", "meters")
+
+# Mirrors spec_manifest.schema.json -> $defs.device.properties (additionalProperties:false).
+# Pinned here to keep manifest_builder engine-import-free. Case 13b (engine-tier)
+# asserts this set EQUALS the schema's device property keys so drift is caught.
+_DEVICE_KEYS = frozenset(
+    {
+        "id",
+        "family",
+        "type",
+        "level_id",
+        "elevation_id",
+        "position",
+        "mounting_height",
+        "orientation",
+        "tolerances",
+        "metadata",
+    }
+)
+_TOLERANCE_KEYS = frozenset({"position", "mounting_height", "orientation"})
 
 # Carried over verbatim from the C# SpecManifestExtractor so the pyRevit front
 # door applies the SAME verdict thresholds as the C# one. These intentionally
@@ -56,9 +78,77 @@ class ManifestBuildError(ValueError):
     """Raised when inputs cannot form a schema-valid manifest."""
 
 
+def _require_positive_int(value, what):  # noqa: ANN001
+    # bool is an int subclass: reject it explicitly so True/False cannot pass.
+    # Do NOT reject integer-valued floats here -- the schema accepts 1000.0 for
+    # "type: integer", so rejecting a float instance would make the builder
+    # STRICTER than the schema (forbidden -- see the subset invariant).
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ManifestBuildError(f"{what} must be a positive integer, got {value!r}")
+
+
+def _require_positive_number(value, what):  # noqa: ANN001
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        raise ManifestBuildError(f"{what} must be a positive number, got {value!r}")
+
+
+def _require_finite(value, what):  # noqa: ANN001
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ManifestBuildError(f"{what} must be a finite number, got {value!r}")
+
+
+def _validate_tolerances(tolerances: dict, what: str) -> None:
+    """Reject unknown tolerance keys / non-positive values (schema subset)."""
+    for key, value in tolerances.items():
+        if key not in _TOLERANCE_KEYS:
+            raise ManifestBuildError(
+                f"unknown tolerance key {key!r} in {what} (allowed: {sorted(_TOLERANCE_KEYS)})"
+            )
+        _require_positive_number(value, f"{what} tolerance {key!r}")
+
+
+def _validate_project(project: dict) -> None:
+    """Require id (non-empty str), name (str), units in the enum (schema subset)."""
+    pid = project.get("id")
+    if not isinstance(pid, str) or not pid.strip():
+        raise ManifestBuildError("project id must be a non-empty string")
+    if not isinstance(project.get("name"), str):
+        raise ManifestBuildError("project name must be a string")
+    if project.get("units") not in _VALID_UNITS:
+        raise ManifestBuildError(
+            f"project units must be one of {_VALID_UNITS}, got {project.get('units')!r}"
+        )
+
+
+def _validate_device_dict(d: dict) -> None:
+    """Reject unknown device keys, bad position shape, non-finite coords (schema subset)."""
+    for key in d:
+        if key not in _DEVICE_KEYS:
+            raise ManifestBuildError(
+                f"unknown device key {key!r} in device {d.get('id')!r} "
+                f"(allowed: {sorted(_DEVICE_KEYS)})"
+            )
+    position = d.get("position")
+    if not isinstance(position, dict) or set(position) != {"x", "y", "z"}:
+        raise ManifestBuildError(
+            f"device {d.get('id')!r} position must be a dict with exactly x/y/z, got {position!r}"
+        )
+    for axis in ("x", "y", "z"):
+        _require_finite(position[axis], f"device {d.get('id')!r} position[{axis!r}]")
+    tolerances = d.get("tolerances")
+    if tolerances is not None:
+        if not isinstance(tolerances, dict):
+            raise ManifestBuildError(f"device {d.get('id')!r} tolerances must be a dict")
+        _validate_tolerances(tolerances, f"device {d.get('id')!r}")
+
+
 def _level_dict(fp: FloorplanExport) -> dict:
     if len(list(fp.pixel_to_model)) != 6:
         raise ManifestBuildError(f"level {fp.level_id!r} pixel_to_model must have 6 elements")
+    _require_positive_int(fp.width_px, f"level {fp.level_id!r} width_px")
+    _require_positive_int(fp.height_px, f"level {fp.level_id!r} height_px")
+    for i, v in enumerate(fp.pixel_to_model):
+        _require_finite(v, f"level {fp.level_id!r} pixel_to_model[{i}]")
     return {
         "id": fp.level_id,
         "name": fp.level_name,
@@ -94,6 +184,11 @@ def build_manifest(
             "schema-required); a device-only manifest is invalid"
         )
 
+    _validate_project(project)
+
+    if default_tolerances is not None:
+        _validate_tolerances(default_tolerances, "default_tolerances")
+
     seen_ids = set()
     for d in devices:
         did = d.get("id")
@@ -104,6 +199,7 @@ def build_manifest(
         if did in seen_ids:
             raise ManifestBuildError(f"duplicate device id: {did!r}")
         seen_ids.add(did)
+        _validate_device_dict(d)
 
     seen_basenames = set()
     seen_level_ids = set()
@@ -160,6 +256,8 @@ def device_dict(
     """
     if not isinstance(unique_id, str) or not unique_id.strip():
         raise ManifestBuildError("device id must be a non-empty UniqueId string")
+    for axis in ("x", "y", "z"):
+        _require_finite(position[axis], f"device {unique_id!r} position[{axis!r}]")
     d: dict = {
         "id": unique_id,
         "family": family,

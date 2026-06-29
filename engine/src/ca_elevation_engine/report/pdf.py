@@ -14,23 +14,25 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from . import _ordering
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from ..models import CapturePackage, SpecManifest, VerdictReport
+    from ..models import CapturePackage, DeviceResult, SpecManifest, VerdictReport
 
 
 class MissingPdfBackend(RuntimeError):
     """Raised when PDF rendering is requested but ReportLab is not installed."""
 
 
-# Verdict -> (label, RGB hex) used for badges and row tints.
+# Verdict -> (label, RGB hex) used for badges and row tints. Labels are
+# deliberately short ("TYPE") to fit the narrow Verdict column; only the ordering
+# is shared (via _ordering), not the label text.
 _VERDICT_STYLE = {
     "pass": ("PASS", "#1a7f37"),
     "flag": ("FLAG", "#bf8700"),
     "absent": ("ABSENT", "#cf222e"),
     "type_mismatch": ("TYPE", "#8250df"),
 }
-# Order problems first, pass last.
-_VERDICT_ORDER = {"flag": 0, "absent": 1, "type_mismatch": 2, "pass": 3}
 
 
 def _require_reportlab():
@@ -51,6 +53,23 @@ def _fmt_delta(value, suffix: str) -> str:
     if value is None:
         return "—"  # em dash
     return f"{value:.3f}{suffix}"
+
+
+def _device_label(result: DeviceResult, manifest: SpecManifest | None) -> str:
+    """Resolve a "Family / Type" string, backfilling from the manifest device.
+
+    Prefers the result's own ``family``/``type``; falls back to the manifest
+    device with a matching id (parity with the HTML renderer). Returns ``"—"``
+    when neither source has anything.
+    """
+    family = result.family
+    type_ = result.type
+    if (family is None or type_ is None) and manifest is not None:
+        dev = next((d for d in manifest.devices if d.id == result.device_id), None)
+        if dev is not None:
+            family = family if family is not None else dev.family
+            type_ = type_ if type_ is not None else dev.type
+    return " / ".join(x for x in (family, type_) if x) or "—"
 
 
 def render_pdf(
@@ -101,6 +120,17 @@ def render_pdf(
         fontSize=7.5,
         textColor=colors.HexColor("#57606a"),
         leading=10,
+    )
+    gap = ParagraphStyle(
+        "Gap",
+        parent=styles["Normal"],
+        fontSize=8.5,
+        leading=11,
+        backColor=colors.HexColor("#fff8f1"),
+        borderColor=colors.HexColor("#ef6c00"),
+        borderWidth=1,
+        borderPadding=6,
+        leftIndent=2,
     )
 
     story: list = []
@@ -157,9 +187,31 @@ def render_pdf(
         )
     )
     story.append(summary_tbl)
+    story.append(Spacer(1, 8))
+
+    # --- Coverage line + gap callout -------------------------------------- #
+    cov = _ordering.coverage(report)
+    story.append(
+        Paragraph(
+            f"Coverage: {cov.matched} of {cov.total} devices matched to a shot",
+            meta,
+        )
+    )
+    if cov.unmatched > 0:
+        ids = ", ".join(_esc(i) for i in cov.unmatched_ids)
+        story.append(Spacer(1, 4))
+        story.append(
+            Paragraph(
+                f"<font color='#8a4b00'><b>Coverage gap &mdash; {cov.unmatched} "
+                f"device(s) not observed in any shot:</b> {ids}. These devices were "
+                "not matched to any capture shot; their verdicts rest on absence, not "
+                "measurement.</font>",
+                gap,
+            )
+        )
     story.append(Spacer(1, 16))
 
-    # --- Device table ----------------------------------------------------- #
+    # --- Device table (grouped by status) --------------------------------- #
     header = [
         "Device",
         "Family / Type",
@@ -171,33 +223,55 @@ def render_pdf(
         "Shot",
         "Notes",
     ]
-    rows = [header]
-    ordered = sorted(
-        report.device_results, key=lambda r: (_VERDICT_ORDER.get(r.verdict.value, 9), r.device_id)
-    )
-    tint_rows: list[tuple[int, str]] = []
-    for i, r in enumerate(ordered, start=1):
-        label, hexcol = _VERDICT_STYLE.get(r.verdict.value, (r.verdict.value.upper(), "#57606a"))
-        fam_type = " / ".join(x for x in (r.family, r.type) if x) or "—"
-        approx = " *" if r.approximate else ""
+    rows: list[list] = [header]
+    # Track row indices for per-row styling. row 0 is the column header.
+    tint_rows: list[int] = []  # problem-row tint
+    group_rows: list[int] = []  # group-header rows (span + bold + tint)
+    idx = 0  # last appended row index (header is index 0)
+    for verdict, results in _ordering.grouped_results(report):
+        vval = verdict.value
+        label, hexcol = _VERDICT_STYLE.get(vval, (vval.upper(), "#57606a"))
+        idx += 1
+        group_rows.append(idx)
         rows.append(
             [
-                Paragraph(_esc(r.device_id), cell),
-                Paragraph(_esc(fam_type), cell),
-                Paragraph(f"<b><font color='{hexcol}'>{label}</font></b>", cell),
-                Paragraph(f"{max(0.0, min(1.0, r.confidence)):.0%}", cell),
-                Paragraph(_fmt_delta(r.deltas.position, suffix) + approx, cell),
-                Paragraph(_fmt_delta(r.deltas.mounting_height, suffix), cell),
-                Paragraph(
-                    "—" if r.deltas.orientation is None else f"{r.deltas.orientation:.1f}°",
-                    cell,
-                ),
-                Paragraph(_esc(r.matched_shot_id or "—"), cell),
-                Paragraph(_esc("; ".join(r.notes)) if r.notes else "—", cell),
+                Paragraph(f"<b>{_esc(label)} ({len(results)})</b>", cell),
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
             ]
         )
-        if r.verdict.value != "pass":
-            tint_rows.append((i, hexcol))
+        for r in results:
+            idx += 1
+            fam_type = _device_label(r, manifest)
+            approx = " *" if r.approximate else ""
+            rows.append(
+                [
+                    Paragraph(_esc(r.device_id), cell),
+                    Paragraph(_esc(fam_type), cell),
+                    Paragraph(f"<b><font color='{hexcol}'>{label}</font></b>", cell),
+                    Paragraph(f"{max(0.0, min(1.0, r.confidence)):.0%}", cell),
+                    Paragraph(_fmt_delta(r.deltas.position, suffix) + approx, cell),
+                    Paragraph(_fmt_delta(r.deltas.mounting_height, suffix), cell),
+                    Paragraph(
+                        "—" if r.deltas.orientation is None else f"{r.deltas.orientation:.1f}°",
+                        cell,
+                    ),
+                    Paragraph(_esc(r.matched_shot_id or "—"), cell),
+                    Paragraph(_esc("; ".join(r.notes)) if r.notes else "—", cell),
+                ]
+            )
+            if vval != "pass":
+                tint_rows.append(idx)
+
+    empty = len(rows) == 1
+    if empty:
+        rows.append([Paragraph("No devices in this report.", cell), "", "", "", "", "", "", "", ""])
 
     col_widths = [
         0.9 * inch,
@@ -223,8 +297,14 @@ def render_pdf(
         ("LEFTPADDING", (0, 0), (-1, -1), 5),
         ("RIGHTPADDING", (0, 0), (-1, -1), 5),
     ]
-    for idx, _hex in tint_rows:
-        style.append(("BACKGROUND", (0, idx), (-1, idx), colors.HexColor("#fff8f0")))
+    for r_idx in tint_rows:
+        style.append(("BACKGROUND", (0, r_idx), (-1, r_idx), colors.HexColor("#fff8f0")))
+    for r_idx in group_rows:
+        style.append(("SPAN", (0, r_idx), (-1, r_idx)))
+        style.append(("BACKGROUND", (0, r_idx), (-1, r_idx), colors.HexColor("#f0f2f5")))
+        style.append(("FONTNAME", (0, r_idx), (-1, r_idx), "Helvetica-Bold"))
+    if empty:
+        style.append(("SPAN", (0, 1), (-1, 1)))
     tbl.setStyle(TableStyle(style))
     story.append(tbl)
 
@@ -249,6 +329,8 @@ def render_pdf(
         topMargin=0.55 * inch,
         bottomMargin=0.5 * inch,
         title=f"{manifest.project.name} -- As-Built Elevation Verification",
+        author="CA Elevation Review",
+        subject="As-Built Elevation Verification",
     )
     doc.build(story)
     return out_path

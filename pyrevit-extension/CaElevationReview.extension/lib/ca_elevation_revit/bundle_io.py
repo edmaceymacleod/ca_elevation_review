@@ -18,6 +18,10 @@ from .manifest_builder import FloorplanExport
 MANIFEST_FILENAME = "manifest.json"
 
 
+class BundleReadError(ValueError):
+    """Raised when a capture package on disk cannot be read/parsed."""
+
+
 def write_field_bundle(
     out_dir: str,
     manifest: dict,
@@ -69,6 +73,21 @@ def write_field_bundle(
 
 
 def read_capture_package(path: str) -> dict:
-    """Read and parse a returned capture-package JSON file."""
-    with open(path, encoding="utf-8") as fh:
-        return json.load(fh)
+    """Read and parse a returned capture-package JSON file.
+
+    Raises :class:`BundleReadError` on a missing file, malformed JSON, or a
+    top-level value that is not a JSON object. Does NOT schema-validate -- that
+    is the engine's job; this seam is JSON-safe, not schema-aware.
+    """
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError as exc:
+        raise BundleReadError(f"capture package not found: {path}") from exc
+    except json.JSONDecodeError as exc:
+        raise BundleReadError(f"capture package is not valid JSON ({path}): {exc}") from exc
+    if not isinstance(data, dict):
+        raise BundleReadError(
+            f"capture package must be a JSON object, got {type(data).__name__}: {path}"
+        )
+    return data

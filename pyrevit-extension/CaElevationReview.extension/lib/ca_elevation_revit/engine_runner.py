@@ -209,8 +209,11 @@ def run_engine(
     report = None
     json_path = os.path.join(out_dir, "verdict_report.json")
     if exists(json_path):
-        with open(json_path, encoding="utf-8") as fh:
-            report = json.load(fh)
+        try:
+            with open(json_path, encoding="utf-8") as fh:
+                report = json.load(fh)
+        except (json.JSONDecodeError, OSError):
+            report = None  # written-but-unreadable; status still reflects exit code
 
     return EngineRun(
         returncode=proc.returncode,

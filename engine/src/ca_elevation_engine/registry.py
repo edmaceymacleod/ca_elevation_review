@@ -60,6 +60,23 @@ VERDICTS: tuple[Verdict, ...] = (
 # ratchet test asserts both files exist for every scenario.
 SCENARIO_GOLDENS: dict[str, str] = {
     "f01_synthetic_office": "f01_verdict_report.json",
+    "f02_multilevel_datum": "f02_multilevel_datum_verdict_report.json",
+    "f03_tolerance_boundary": "f03_tolerance_boundary_verdict_report.json",
+    "f04_coverage_orientation": "f04_coverage_orientation_verdict_report.json",
+    "f05_distinctions": "f05_distinctions_verdict_report.json",
+    "f06_device_wall": "f06_device_wall_verdict_report.json",
+    "f07_empty_manifest": "f07_empty_manifest_verdict_report.json",
+}
+# Payload file stems are not derivable from scenario ids (f01 is the historical
+# exception); bind them explicitly. Identity for f02-f07.
+SCENARIO_PAYLOAD_STEMS: dict[str, str] = {
+    "f01_synthetic_office": "f01_office",
+    "f02_multilevel_datum": "f02_multilevel_datum",
+    "f03_tolerance_boundary": "f03_tolerance_boundary",
+    "f04_coverage_orientation": "f04_coverage_orientation",
+    "f05_distinctions": "f05_distinctions",
+    "f06_device_wall": "f06_device_wall",
+    "f07_empty_manifest": "f07_empty_manifest",
 }
 SCENARIOS: tuple[str, ...] = tuple(SCENARIO_GOLDENS)
 

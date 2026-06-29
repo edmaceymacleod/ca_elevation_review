@@ -22,7 +22,14 @@ Invariants asserted by tests (see tests/test_integration_golden.py):
 from __future__ import annotations
 
 import json
+import tempfile
 from pathlib import Path
+
+# Fixed clock used to stamp the golden deterministically. MUST match the value
+# tests/test_integration_golden.py uses (imported from fixtures.seeders._common)
+# so the golden this seeder writes is the golden the integration test reproduces.
+# test_fixture_drift.py asserts the two literals agree.
+GENERATED_AT = "2026-06-28T00:00:00Z"
 
 # Identity ARKit pose (camera at world origin, looking down -Z, +Y up).
 IDENTITY_POSE = [
@@ -146,16 +153,74 @@ def build_capture() -> dict:
     }
 
 
+def _write_authored(path: Path, obj: dict) -> None:
+    """Serializer for hand-authored fixtures (manifest, capture).
+
+    Preserves authored key order (sort_keys=False), indent=2, UTF-8, NO trailing
+    newline -- byte-identical to the committed manifest/capture and to the rest
+    of the synthetic corpus (which is written by ``_common.write_payloads`` the
+    same way). The golden, by contrast, IS key-sorted with a trailing newline
+    (see ``_write_golden``).
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(obj, indent=2), encoding="utf-8")
+
+
+def _write_golden(path: Path, report) -> None:
+    """Serializer for the golden: the engine's own render_json + newline.
+
+    Byte-identical to the committed golden (sorted keys, indent=2, trailing
+    newline). Do NOT route the golden through _write_authored -- the committed
+    golden is key-sorted, an authored-order dump would churn it.
+    """
+    from ca_elevation_engine.report.json_report import render_json
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_json(report) + "\n", encoding="utf-8")
+
+
+def build_golden():
+    """Produce the F-01 golden report object by running the engine on the
+    in-memory manifest/capture, stamped with the fixed GENERATED_AT clock.
+
+    Returns the VerdictReport (the report OBJECT, not its dict/bytes) so the
+    caller serializes it via the engine's render_json. Uses the real pipeline so
+    the golden can never silently diverge from engine behavior; the integration
+    test independently re-derives it as a cross-check.
+
+    Ingest does NOT load the referenced image/depth asset files (it only checks
+    the JSON paths it is given), so no asset bytes are needed in the tempdir.
+    """
+    from ca_elevation_engine.pipeline import run_pipeline
+
+    with tempfile.TemporaryDirectory() as td:
+        tdp = Path(td)
+        _write_authored(tdp / "m.manifest.json", build_manifest())
+        _write_authored(tdp / "c.capture.json", build_capture())
+        result = run_pipeline(
+            tdp / "m.manifest.json",
+            tdp / "c.capture.json",
+            generated_at=GENERATED_AT,
+        )
+    return result.report
+
+
 def write(out_dir: Path) -> dict[str, Path]:
+    """Write the F-01 manifest, capture, and golden.
+
+    ``out_dir`` is the *synthetic* directory; the golden is resolved relative to
+    it as ``out_dir.parent / "golden"``. This ``out_dir.parent / "golden"``
+    contract is load-bearing: regen_fixtures.py relies on it to map outputs to
+    committed paths by relative path.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
-    paths = {}
     manifest_path = out_dir / "f01_office.manifest.json"
     capture_path = out_dir / "f01_office.capture.json"
-    manifest_path.write_text(json.dumps(build_manifest(), indent=2), encoding="utf-8")
-    capture_path.write_text(json.dumps(build_capture(), indent=2), encoding="utf-8")
-    paths["manifest"] = manifest_path
-    paths["capture"] = capture_path
-    return paths
+    golden_path = out_dir.parent / "golden" / "f01_verdict_report.json"
+    _write_authored(manifest_path, build_manifest())
+    _write_authored(capture_path, build_capture())
+    _write_golden(golden_path, build_golden())
+    return {"manifest": manifest_path, "capture": capture_path, "golden": golden_path}
 
 
 def main() -> None:

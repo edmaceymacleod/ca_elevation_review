@@ -13,6 +13,7 @@ import os
 import struct
 from typing import List, Sequence
 
+from .affine import build_pixel_to_model
 from .manifest_builder import FloorplanExport
 
 # Larger image edge, in pixels. The export budget is spent along the longer crop
@@ -133,14 +134,18 @@ def export_floorplans(doc, level_ids: Sequence[str]) -> List[FloorplanExport]:  
             # PNG W/H (not the requested budget) so a letterboxed export is exact
             # along whichever axis filled. For an un-rotated plan bx=(1,0), by=(0,1):
             # a=(cmax_x-cmin_x)/W, b=0, c=cmin_x, d=0, e=-(cmax_y-cmin_y)/H, f=cmax_y.
-            su = width_ft / width_px
-            sv = -(height_ft) / height_px
-            a = su * bx_x
-            b = sv * by_x
-            c = o_x + cmin_x * bx_x + cmax_y * by_x
-            d = su * bx_y
-            e = sv * by_y
-            f = o_y + cmin_x * bx_y + cmax_y * by_y
+            pixel_to_model = build_pixel_to_model(
+                origin_x=o_x,
+                origin_y=o_y,
+                basis_x=(bx_x, bx_y),
+                basis_y=(by_x, by_y),
+                crop_min_x=cmin_x,
+                crop_max_x=cmax_x,
+                crop_min_y=cmin_y,
+                crop_max_y=cmax_y,
+                width_px=width_px,
+                height_px=height_px,
+            )
 
             # CORRECTNESS CAVEAT: the affine assumes the export fills the image
             # with the crop extent at a matching aspect ratio. _native_fit drives
@@ -167,7 +172,7 @@ def export_floorplans(doc, level_ids: Sequence[str]) -> List[FloorplanExport]:  
                     basename=f"floorplans/level_{lid}.png",
                     width_px=width_px,
                     height_px=height_px,
-                    pixel_to_model=[a, b, c, d, e, f],
+                    pixel_to_model=pixel_to_model,
                 )
             )
         except Exception as exc:  # one bad level must not abort the rest

@@ -195,6 +195,12 @@ def match_device(
             device.orientation.facing_angle, obs.facing_angle
         )
 
+    # Surface the matched shot's registration notes (incl. ICP residual) so they
+    # reach DeviceResult.notes and the report. Free-text only; no schema change.
+    reg = registrations.get(shot_id)
+    if reg is not None and reg.notes:
+        match.notes.extend(f"registration: {n}" for n in reg.notes)
+
     shot = next((s for s in capture.shots if s.id == shot_id), None)
     match.approximate = shot is None or (shot.depth_map is None and shot.point_cloud is None)
     if match.approximate:

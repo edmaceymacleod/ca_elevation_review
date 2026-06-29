@@ -52,6 +52,7 @@ jobs:
               - 'engine/src/ca_elevation_engine/schemas/**'
               - 'engine/fixtures/**'
               - 'engine/tools/validate_schemas.py'
+              - 'engine/tools/regen_fixtures.py'
               - '.github/workflows/ci.yml'
             ios:
               - 'ios-app/**'
@@ -156,7 +157,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -c engine/requirements-dev.txt -e "engine"
-      - run: python engine/tools/validate_schemas.py -v
+      - name: Schema + fixture validation (strict)
+        run: python engine/tools/validate_schemas.py -v --strict-unknown
+      - name: Fixture/golden drift guard (re-run seeders, assert no diff)
+        run: python engine/tools/regen_fixtures.py --check
 
   # --- iOS: build/test the pure kit (blocks); SwiftLint (non-blocking) ------
   ios_kit:

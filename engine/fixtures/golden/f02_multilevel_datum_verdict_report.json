@@ -1,0 +1,82 @@
+{
+  "device_results": [
+    {
+      "approximate": false,
+      "confidence": 0.99,
+      "deltas": {
+        "mounting_height": 0.0,
+        "orientation": 0.0,
+        "position": 0.0
+      },
+      "device_id": "D-L1-PASS",
+      "family": "Card Reader",
+      "identity_confirmed": false,
+      "matched_shot_id": "S1",
+      "notes": [],
+      "type": "HID-R10",
+      "verdict": "pass"
+    },
+    {
+      "approximate": false,
+      "confidence": 0.99,
+      "deltas": {
+        "mounting_height": 0.0,
+        "orientation": 0.0,
+        "position": 0.0
+      },
+      "device_id": "D-L2-DATUM-PASS",
+      "family": "Card Reader",
+      "identity_confirmed": false,
+      "matched_shot_id": "S2",
+      "notes": [],
+      "type": "HID-R10",
+      "verdict": "pass"
+    },
+    {
+      "approximate": false,
+      "confidence": 0.99,
+      "deltas": {
+        "mounting_height": 0.09999999999999964,
+        "orientation": 0.0,
+        "position": 0.0
+      },
+      "device_id": "D-L2-HEIGHT-FLAG",
+      "family": "Card Reader",
+      "identity_confirmed": false,
+      "matched_shot_id": "S2",
+      "notes": [
+        "mounting height 0.100 > tol 0.042"
+      ],
+      "type": "HID-R10",
+      "verdict": "flag"
+    },
+    {
+      "approximate": false,
+      "confidence": 0.99,
+      "deltas": {
+        "mounting_height": 0.03125,
+        "orientation": 0.0,
+        "position": 0.0
+      },
+      "device_id": "D-L2-HEIGHT-PASS",
+      "family": "Card Reader",
+      "identity_confirmed": false,
+      "matched_shot_id": "S2",
+      "notes": [],
+      "type": "HID-R10",
+      "verdict": "pass"
+    }
+  ],
+  "engine_version": "0.1.0",
+  "generated_at": "2026-06-28T00:00:00Z",
+  "project_id": "demo-multilevel-02",
+  "schema_version": "1.0.0",
+  "summary": {
+    "absent": 0,
+    "flag": 1,
+    "pass": 3,
+    "total": 4,
+    "type_mismatch": 0
+  },
+  "units": "feet"
+}

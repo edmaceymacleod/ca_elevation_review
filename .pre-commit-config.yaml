@@ -76,9 +76,21 @@ repos:
       # job in ci.yml).
       - id: validate-schemas
         name: validate JSON schemas + fixtures
-        entry: python engine/tools/validate_schemas.py
+        entry: python engine/tools/validate_schemas.py --strict-unknown
         language: system
-        files: ^engine/(src/ca_elevation_engine/schemas/|fixtures/|tools/validate_schemas\.py)
+        files: ^engine/(src/ca_elevation_engine/schemas/|fixtures/|tools/(validate_schemas|regen_fixtures)\.py)
+        pass_filenames: false
+        stages: [pre-push, manual]
+
+      # Fixture/golden drift: re-run the seeders, assert the committed fixtures
+      # match (mirrors the fixture-drift step in ci.yml). Scoped to the fixtures
+      # tree + the tool so it stays fast; the engine-change-moves-golden case is
+      # already covered by test_integration_golden + CI's drift step.
+      - id: fixture-drift
+        name: fixture/golden drift (re-run seeders, assert no diff)
+        entry: python engine/tools/regen_fixtures.py --check
+        language: system
+        files: ^engine/(fixtures/|tools/regen_fixtures\.py)
         pass_filenames: false
         stages: [pre-push, manual]
 

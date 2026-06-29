@@ -9,13 +9,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..models import Verdict
+from . import _ordering
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ..models import VerdictReport
-
-# Non-pass verdicts, in the order they are listed under the counts line.
-_PROBLEM_ORDER = (Verdict.FLAG, Verdict.ABSENT, Verdict.TYPE_MISMATCH)
 
 
 def summarize(report: VerdictReport) -> str:
@@ -29,10 +26,12 @@ def summarize(report: VerdictReport) -> str:
     )
     lines.append(header)
 
-    problems = [r for r in report.device_results if r.verdict is not Verdict.PASS]
     # Surface problems grouped by severity, stable by device id within a group.
-    rank = {v: i for i, v in enumerate(_PROBLEM_ORDER)}
-    problems.sort(key=lambda r: (rank.get(r.verdict, 99), r.device_id))
+    # Ordering delegated to the shared _ordering helper so the three renderers
+    # never drift.
+    problems = [
+        r for r in _ordering.ordered_results(report) if r.verdict in _ordering.PROBLEM_VERDICTS
+    ]
 
     if not problems:
         lines.append("")

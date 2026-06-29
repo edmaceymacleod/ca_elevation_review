@@ -1,0 +1,124 @@
+{
+  "schema_version": "1.0.0",
+  "project": {
+    "id": "demo-multilevel-02",
+    "name": "Synthetic Multi-level",
+    "units": "feet",
+    "revit_file": "demo-multilevel-02.rvt"
+  },
+  "coordinate_system": {
+    "name": "Project",
+    "north_angle": 0.0
+  },
+  "default_tolerances": {
+    "position": 0.083,
+    "mounting_height": 0.042,
+    "orientation": 10.0
+  },
+  "levels": [
+    {
+      "id": "L1",
+      "name": "Level 1",
+      "elevation": 0.0,
+      "floorplan": {
+        "image": "plan_L1.png",
+        "width_px": 1000,
+        "height_px": 800,
+        "pixel_to_model": [
+          0.01,
+          0.0,
+          0.0,
+          0.0,
+          0.01,
+          0.0
+        ]
+      }
+    },
+    {
+      "id": "L2",
+      "name": "Level 2",
+      "elevation": 12.0,
+      "floorplan": {
+        "image": "plan_L2.png",
+        "width_px": 1000,
+        "height_px": 800,
+        "pixel_to_model": [
+          0.01,
+          0.0,
+          0.0,
+          0.0,
+          0.01,
+          0.0
+        ]
+      }
+    }
+  ],
+  "devices": [
+    {
+      "id": "D-L1-PASS",
+      "family": "Card Reader",
+      "type": "HID-R10",
+      "level_id": "L1",
+      "elevation_id": "E-NORTH",
+      "position": {
+        "x": 8.0,
+        "y": 0.0,
+        "z": 4.0
+      },
+      "orientation": {
+        "facing_angle": 0.0,
+        "up_axis": "up"
+      }
+    },
+    {
+      "id": "D-L2-DATUM-PASS",
+      "family": "Card Reader",
+      "type": "HID-R10",
+      "level_id": "L2",
+      "elevation_id": "E-NORTH",
+      "position": {
+        "x": 8.0,
+        "y": 0.0,
+        "z": 16.0
+      },
+      "orientation": {
+        "facing_angle": 0.0,
+        "up_axis": "up"
+      }
+    },
+    {
+      "id": "D-L2-HEIGHT-FLAG",
+      "family": "Card Reader",
+      "type": "HID-R10",
+      "level_id": "L2",
+      "elevation_id": "E-NORTH",
+      "position": {
+        "x": 8.0,
+        "y": 2.0,
+        "z": 16.0
+      },
+      "orientation": {
+        "facing_angle": 0.0,
+        "up_axis": "up"
+      },
+      "mounting_height": 4.0
+    },
+    {
+      "id": "D-L2-HEIGHT-PASS",
+      "family": "Card Reader",
+      "type": "HID-R10",
+      "level_id": "L2",
+      "elevation_id": "E-NORTH",
+      "position": {
+        "x": 8.0,
+        "y": -2.0,
+        "z": 16.0
+      },
+      "orientation": {
+        "facing_angle": 0.0,
+        "up_axis": "up"
+      },
+      "mounting_height": 4.0
+    }
+  ]
+}
