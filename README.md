@@ -1,5 +1,10 @@
 # CA Elevation Review
 
+[![CI](https://github.com/edmaceymacleod/ca_elevation_review/actions/workflows/ci.yml/badge.svg)](https://github.com/edmaceymacleod/ca_elevation_review/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](engine/pyproject.toml)
+[![Status: Phase 0](https://img.shields.io/badge/status-Phase%200%20%C2%B7%20in%20progress-orange.svg)](#build-phasing)
+
 **An as-built elevation verification tool: compare the devices a Revit model
 *expects* against the site reality a phone *captured*, and emit per-device
 verdicts plus an issuable report.**
@@ -20,6 +25,17 @@ That is what this repo builds.
 - **Local-first:** no SaaS, no hosted middleware, no cloud processing. Everything
   runs on the user's own machine; project data moves by local file exchange.
 - **Status:** Phase 0 (engine + fixtures + CI) -- **in progress.**
+
+## Contents
+
+- [Architecture](#architecture-three-components-three-languages-one-repo)
+- [Repository layout](#repository-layout)
+- [Quickstart (the engine)](#quickstart-the-engine)
+- [What v1 can honestly verify](#what-v1-can-honestly-verify)
+- [Build phasing](#build-phasing)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
@@ -76,6 +92,22 @@ The engine emits a third payload, the **verdict report**, consumed by the Revit
 front door for write-back and by the report renderer. All three are defined by JSON Schema
 under [`engine/src/ca_elevation_engine/schemas/`](engine/src/ca_elevation_engine/schemas/)
 and documented in [`docs/schemas.md`](docs/schemas.md).
+
+### Repository layout
+
+```
+ca_elevation_review/
+├── engine/              # CPython OSS core: ingest → register → compare → report
+│   ├── src/             #   ca_elevation_engine package (incl. schemas/)
+│   ├── fixtures/        #   golden manifest + capture + verdict fixtures
+│   └── tests/           #   headless unit/integration tests
+├── pyrevit-extension/   # Revit front door (pyRevit CPython runtime, Windows)
+├── revit-addin/         # Original C# .NET add-in — retained legacy, CI-gated off
+├── ios-app/             # Swift/SwiftUI/ARKit capture client + CaElevationKit
+├── docs/                # Design, architecture, schemas, testing, migration plan
+├── CONTRIBUTING.md      # Per-component dev setup + tiered testing model
+└── README.md
+```
 
 ---
 
@@ -162,6 +194,7 @@ trustworthy before more effort rides on it.
 - [`docs/architecture.md`](docs/architecture.md) -- the three components, the seam, the payloads, the pipeline.
 - [`docs/pyrevit-migration-plan.md`](docs/pyrevit-migration-plan.md) -- the front-door pivot from the C# add-in to the pyRevit extension, with rationale and file layout.
 - [`docs/testing.md`](docs/testing.md) -- the tiered testing model and fixture / registry / ratchet discipline.
+- [`docs/ci.md`](docs/ci.md) -- the single-gate CI design and the one required `all-green` check.
 - [`docs/schemas.md`](docs/schemas.md) -- the three payload schemas, field by field, and the affine / pose conventions.
 - [`docs/ui-conventions.md`](docs/ui-conventions.md) -- the iPhone app's look-and-feel policy (native-default), color/typography semantics, and branding assets.
 
