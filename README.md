@@ -163,6 +163,7 @@ trustworthy before more effort rides on it.
 - [`docs/pyrevit-migration-plan.md`](docs/pyrevit-migration-plan.md) -- the front-door pivot from the C# add-in to the pyRevit extension, with rationale and file layout.
 - [`docs/testing.md`](docs/testing.md) -- the tiered testing model and fixture / registry / ratchet discipline.
 - [`docs/schemas.md`](docs/schemas.md) -- the three payload schemas, field by field, and the affine / pose conventions.
+- [`docs/ui-conventions.md`](docs/ui-conventions.md) -- the iPhone app's look-and-feel policy (native-default), color/typography semantics, and branding assets.
 
 ## Contributing
 

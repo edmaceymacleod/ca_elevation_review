@@ -29,6 +29,7 @@ ios-app/
       Views/                     ProjectList / Capture / PlacePin / Coverage + plan canvas
       Capture/                   ARCaptureSession (ARKit/LiDAR), CaptureExporter
       Heading/                   CompassHeading (CoreLocation, pin pre-fill)
+      Assets.xcassets/           AccentColor + AppIcon (placeholder); see ../docs/ui-conventions.md
   Tests/
     CaElevationKitTests/         XCTest: bundle decode, capture encode, affine math
 ```
@@ -88,8 +89,9 @@ camera/LiDAR, so the capture path only works on an iPhone Pro.
 
 > The binary `.xcodeproj` is intentionally not committed (unreviewable, can't be
 > authored headlessly); regenerate it from `project.yml`. See
-> `../docs/ios-mac-silicon-readiness.md` for the full Apple-Silicon checklist and
-> `CLAUDE.md` for the Claude Code build/run loop (XcodeBuildMCP).
+> `../docs/ios-mac-silicon-readiness.md` for the full Apple-Silicon checklist,
+> `../docs/ui-conventions.md` for the app's look-and-feel policy and branding
+> assets, and `CLAUDE.md` for the Claude Code build/run loop (XcodeBuildMCP).
 
 ## Bundle round-trip (local-first, no sync server)
 
