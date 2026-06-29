@@ -123,7 +123,7 @@ def _resolve_level_int(el) -> int:  # noqa: ANN001
             return lvl_int
 
     # Fallback: the level parameters (work-plane / schedule placements).
-    from Autodesk.Revit.DB import BuiltInParameter  # type: ignore
+    from Autodesk.Revit.DB import BuiltInParameter
 
     for pname in _LEVEL_PARAM_FALLBACKS:
         bip = getattr(BuiltInParameter, pname, None)
@@ -210,11 +210,12 @@ def extract_devices(doc, level_lookup: Dict[int, str]) -> List[dict]:  # noqa: A
     walk; skips and errors are counted and logged.
     """
     # LIVE: requires Revit.
-    from ._compat import eid_value, element_name
-    from Autodesk.Revit.DB import (  # type: ignore
+    from Autodesk.Revit.DB import (
         BuiltInCategory,
         FilteredElementCollector,
     )
+
+    from ._compat import eid_value, element_name
 
     devices: List[dict] = []
     seen_unique_ids = set()
@@ -227,9 +228,7 @@ def extract_devices(doc, level_lookup: Dict[int, str]) -> List[dict]:  # noqa: A
         if bic is None:
             continue  # this Revit build lacks the category
 
-        collector = (
-            FilteredElementCollector(doc).OfCategory(bic).WhereElementIsNotElementType()
-        )
+        collector = FilteredElementCollector(doc).OfCategory(bic).WhereElementIsNotElementType()
         for el in collector:
             try:
                 unique_id = el.UniqueId

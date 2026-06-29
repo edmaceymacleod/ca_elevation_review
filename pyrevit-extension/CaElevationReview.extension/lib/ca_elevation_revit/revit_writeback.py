@@ -48,7 +48,7 @@ def apply_verdicts(doc, view, overrides: List[DeviceOverride]) -> int:  # noqa: 
     why ``revit_extract`` must stamp UniqueId as the device id.
     """
     # LIVE: requires Revit (pythonnet/CLR idioms, not "C# in Python").
-    from Autodesk.Revit.DB import Transaction  # type: ignore
+    from Autodesk.Revit.DB import Transaction
 
     txn = Transaction(doc, "CA Elevation verdicts")
     txn.Start()
@@ -98,7 +98,7 @@ def clear_prior_overrides(doc, view) -> int:  # noqa: ANN001
     devices dropped from the new report.
     """
     # LIVE: requires Revit.
-    from Autodesk.Revit.DB import (  # type: ignore
+    from Autodesk.Revit.DB import (
         FilteredElementCollector,
         OverrideGraphicSettings,
         Transaction,
@@ -141,7 +141,7 @@ def clear_prior_overrides(doc, view) -> int:  # noqa: ANN001
 
 def _comments_param(el):  # noqa: ANN001
     """Return the element's Comments instance Parameter, or None if absent."""
-    from Autodesk.Revit.DB import BuiltInParameter  # type: ignore
+    from Autodesk.Revit.DB import BuiltInParameter
 
     try:
         return el.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS)
@@ -187,7 +187,7 @@ def _build_override(color):  # noqa: ANN001
     each is guarded with ``hasattr``; cut-plane setters are applied too for the
     section/3D views where they exist.
     """
-    from Autodesk.Revit.DB import Color, OverrideGraphicSettings  # type: ignore
+    from Autodesk.Revit.DB import Color, OverrideGraphicSettings
 
     revit_color = Color(*color)
     ogs = OverrideGraphicSettings()

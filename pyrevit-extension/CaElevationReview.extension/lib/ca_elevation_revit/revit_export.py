@@ -66,7 +66,7 @@ def export_floorplans(doc, level_ids: Sequence[str]) -> List[FloorplanExport]:  
         level = level_map.get(str(level_id))
         if level is None:
             skipped += 1
-            print("ca_elevation_export: no level for id {0!r}; skipped".format(level_id))
+            print(f"ca_elevation_export: no level for id {level_id!r}; skipped")
             continue
 
         try:
@@ -86,9 +86,7 @@ def export_floorplans(doc, level_ids: Sequence[str]) -> List[FloorplanExport]:  
                 if need_create:
                     view = _create_plan_view(doc, level)
                     if view is None:
-                        raise RuntimeError(
-                            "no FloorPlan ViewFamilyType / ViewPlan.Create failed"
-                        )
+                        raise RuntimeError("no FloorPlan ViewFamilyType / ViewPlan.Create failed")
                 # CropBoxActive=True makes ExportImage frame the crop extent (not
                 # the full view extent), which is what the affine below assumes.
                 view.CropBoxActive = True
@@ -154,9 +152,9 @@ def export_floorplans(doc, level_ids: Sequence[str]) -> List[FloorplanExport]:  
                 img_aspect = float(width_px) / float(height_px)
                 if abs(crop_aspect - img_aspect) / crop_aspect > 0.01:
                     print(
-                        "ca_elevation_export: WARNING level {0} aspect mismatch "
-                        "(crop {1:.4f} vs image {2:.4f}); export may be "
-                        "letterboxed".format(level_id, crop_aspect, img_aspect)
+                        f"ca_elevation_export: WARNING level {level_id} aspect mismatch "
+                        f"(crop {crop_aspect:.4f} vs image {img_aspect:.4f}); export may be "
+                        "letterboxed"
                     )
 
             lid = str(eid_value(level.Id))
@@ -166,7 +164,7 @@ def export_floorplans(doc, level_ids: Sequence[str]) -> List[FloorplanExport]:  
                     level_name=element_name(level),
                     elevation=level.Elevation,
                     image_bytes=image_bytes,
-                    basename="floorplans/level_{0}.png".format(lid),
+                    basename=f"floorplans/level_{lid}.png",
                     width_px=width_px,
                     height_px=height_px,
                     pixel_to_model=[a, b, c, d, e, f],
@@ -174,18 +172,11 @@ def export_floorplans(doc, level_ids: Sequence[str]) -> List[FloorplanExport]:  
             )
         except Exception as exc:  # one bad level must not abort the rest
             skipped += 1
-            print(
-                "ca_elevation_export: level {0!r} export failed ({1}); "
-                "skipped".format(level_id, exc)
-            )
+            print(f"ca_elevation_export: level {level_id!r} export failed ({exc}); skipped")
             continue
 
     if skipped:
-        print(
-            "ca_elevation_export: exported {0} level(s), skipped {1}".format(
-                len(exports), skipped
-            )
-        )
+        print(f"ca_elevation_export: exported {len(exports)} level(s), skipped {skipped}")
     return exports
 
 
@@ -329,9 +320,7 @@ def _build_export_options(view, file_stub, pixel_size, fit_horizontal):  # noqa:
     opts.ImageResolution = ImageResolution.DPI_150
     opts.ZoomType = ZoomFitType.FitToPage
     opts.PixelSize = int(pixel_size)
-    opts.FitDirection = (
-        FitDirectionType.Horizontal if fit_horizontal else FitDirectionType.Vertical
-    )
+    opts.FitDirection = FitDirectionType.Horizontal if fit_horizontal else FitDirectionType.Vertical
     opts.HLRandWFViewsFileType = ImageFileType.PNG
     # Pre-2026 ImageExportOptions may lack ShadingViewsFileType; plans are
     # hidden-line so it only matters for shaded 3D views.
@@ -348,8 +337,8 @@ def _native_fit(width, height, pixel_size):
     """
     if width <= 0 or height <= 0:
         raise ValueError(
-            "crop extents must be positive, got {0!r} x {1!r} "
-            "(inactive or collapsed crop box?)".format(width, height)
+            f"crop extents must be positive, got {width!r} x {height!r} "
+            "(inactive or collapsed crop box?)"
         )
     return {"fit_horizontal": width >= height, "pixel_size": int(pixel_size)}
 

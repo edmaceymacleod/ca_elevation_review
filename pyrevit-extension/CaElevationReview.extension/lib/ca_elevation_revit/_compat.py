@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Cross-version Revit API compatibility shims for the LIVE revit_* modules.
 
 Borrowed from Sterling Revit Tools (``Sterling.extension/lib/revit_compat.py``)
@@ -18,7 +17,6 @@ make_eid(value) -> ElementId
     (Int64 / BuiltInParameter / BuiltInCategory all match). Force the Int64
     overload on R26+, plain int on R23-R25; the choice is probed once and cached.
 """
-from __future__ import print_function
 
 
 def eid_value(element_id):
