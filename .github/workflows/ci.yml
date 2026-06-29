@@ -178,6 +178,43 @@ jobs:
         working-directory: ios-app
         run: swiftlint lint --config .swiftlint.yml
 
+  # --- iOS: build the actual App target so actool compiles the asset catalog --
+  #
+  # The ios_kit job above only builds/tests the pure CaElevationKit SwiftPM
+  # package, so actool never runs and an invalid AppIcon/AccentColor would pass
+  # CI undetected. This job generates the Xcode project from project.yml and
+  # builds the CaElevationReview App target for the iOS Simulator -- enough to
+  # run actool on Assets.xcassets and compile the SwiftUI/ARKit app code.
+  #
+  # Build-only: the LiDAR/camera capture path returns nil/black frames in the
+  # Simulator (no sensors), so we never boot a sim or run on-device tests here.
+  ios_app:
+    name: CaElevationReview app (macos)
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        working-directory: ios-app
+        run: xcodegen generate
+      - name: Build app target (Simulator; no signing in CI)
+        working-directory: ios-app
+        # generic/platform=iOS Simulator builds for the simulator SDK without
+        # needing a booted device. Signing is disabled because hosted runners
+        # have no provisioning profile or identity.
+        run: |
+          xcodebuild build \
+            -project CaElevationReview.xcodeproj \
+            -scheme CaElevationReview \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
   # --- Revit C# add-in (NON-GATING: Revit API assemblies absent on runners) -
   revit:
     name: revit-addin (windows)
@@ -221,7 +258,7 @@ jobs:
   all-green:
     name: all-green
     if: always()
-    needs: [changes, engine, pyrevit_floor, pyrevit_engine, schema, ios_kit, revit, secret_scan]
+    needs: [changes, engine, pyrevit_floor, pyrevit_engine, schema, ios_kit, ios_app, revit, secret_scan]
     runs-on: ubuntu-latest
     steps:
       - name: Gate on required jobs (success or skipped; revit is non-gating)
@@ -233,6 +270,7 @@ jobs:
             [pyrevit_engine]="${{ needs.pyrevit_engine.result }}"
             [schema]="${{ needs.schema.result }}"
             [ios_kit]="${{ needs.ios_kit.result }}"
+            [ios_app]="${{ needs.ios_app.result }}"
             [secret_scan]="${{ needs.secret_scan.result }}"
           )
           bad=0

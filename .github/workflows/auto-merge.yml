@@ -1,0 +1,114 @@
+# Auto-merge owner PRs once CI is green, then delete the head branch.
+#
+# Why a workflow and not a setting:
+#   * "Automatically delete head branches" IS a native repo setting, but only
+#     fires for merges GitHub performs. This workflow performs the merge, so it
+#     deletes the branch itself. (Flipping the native toggle too is harmless.)
+#   * "Auto-merge every PR from a specific user" is NOT a native GitHub feature.
+#     This workflow implements it: a PR opened by the repo owner is squash-merged
+#     as soon as the `CI` workflow finishes successfully on its head commit.
+#
+# It triggers on `workflow_run` (CI completed) rather than `pull_request` so the
+# merge only ever happens AFTER CI has actually passed. Note: workflow_run only
+# runs from the copy of this file on the default branch -- it takes effect once
+# this file is merged into `main`.
+name: Auto-merge owner PRs
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    # Only consider successful CI runs that came from a pull_request raised by
+    # the repo owner. The per-PR checks below re-verify all of this.
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.actor.login == 'edmaceymacleod'
+    steps:
+      - name: Squash-merge owner PR and delete branch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const { owner, repo } = context.repo;
+            const OWNER_LOGIN = 'edmaceymacleod';
+
+            // PRs linked to the run; fall back to a head-branch lookup if empty.
+            let prRefs = run.pull_requests || [];
+            if (prRefs.length === 0) {
+              const { data } = await github.rest.pulls.list({
+                owner,
+                repo,
+                state: 'open',
+                head: `${owner}:${run.head_branch}`,
+              });
+              prRefs = data;
+            }
+
+            if (prRefs.length === 0) {
+              core.info('No open PR associated with this CI run; nothing to do.');
+              return;
+            }
+
+            for (const ref of prRefs) {
+              const { data: pr } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: ref.number,
+              });
+
+              if (pr.state !== 'open') {
+                core.info(`PR #${pr.number} is ${pr.state}; skipping.`);
+                continue;
+              }
+              if (pr.draft) {
+                core.info(`PR #${pr.number} is a draft; skipping.`);
+                continue;
+              }
+              if (pr.user.login !== OWNER_LOGIN) {
+                core.info(`PR #${pr.number} authored by ${pr.user.login}, not ${OWNER_LOGIN}; skipping.`);
+                continue;
+              }
+              // Guard against merging a commit CI did not actually validate
+              // (e.g. a new push landed after this run started).
+              if (pr.head.sha !== run.head_sha) {
+                core.info(`PR #${pr.number} head ${pr.head.sha} != validated ${run.head_sha}; skipping.`);
+                continue;
+              }
+              if (!pr.mergeable_state || ['dirty', 'blocked', 'behind'].includes(pr.mergeable_state)) {
+                core.info(`PR #${pr.number} mergeable_state=${pr.mergeable_state}; skipping.`);
+                continue;
+              }
+
+              await github.rest.pulls.merge({
+                owner,
+                repo,
+                pull_number: pr.number,
+                merge_method: 'squash',
+              });
+              core.info(`Merged PR #${pr.number}.`);
+
+              // Delete the head branch (only when it lives in this repo).
+              const headInThisRepo = pr.head.repo && pr.head.repo.full_name === `${owner}/${repo}`;
+              if (headInThisRepo) {
+                try {
+                  await github.rest.git.deleteRef({
+                    owner,
+                    repo,
+                    ref: `heads/${pr.head.ref}`,
+                  });
+                  core.info(`Deleted branch ${pr.head.ref}.`);
+                } catch (err) {
+                  core.warning(`Could not delete branch ${pr.head.ref}: ${err.message}`);
+                }
+              }
+            }

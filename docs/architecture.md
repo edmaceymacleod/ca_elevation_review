@@ -8,9 +8,9 @@ behind each decision, read `design.md`; for the payload schemas read
 
 ```
 +--------------------+        local file        +-----------------------+
-|  iPhone capture    |  ----- field bundle --->  |  Revit C# add-in      |
-|  app (Swift/ARKit) |  <---- capture pkg ------  |  (.NET, Windows)      |
-|  ios-app/          |                            |  revit-addin/         |
+|  iPhone capture    |  ----- field bundle --->  |  pyRevit extension    |
+|  app (Swift/ARKit) |  <---- capture pkg ------  |  (Python, Windows)    |
+|  ios-app/          |                            |  pyrevit-extension/   |
 +--------------------+                            +-----------+-----------+
                                                               | invokes (out-of-process)
                                                               v
@@ -42,11 +42,13 @@ behind each decision, read `design.md`; for the payload schemas read
   are fragile to load inside Revit's process. The pure logic lives in modules
   like `geometry.py` (affine + pose math) and `models.py` (typed payloads),
   separated from format IO.
-- **Revit add-in** is the desktop front door, chosen over a pyRevit extension so
-  users do not have to install pyRevit first. It extracts the manifest from the
-  live model, exports floorplans with their transforms, invokes the engine
-  out-of-process on returned captures, colors devices by verdict, and opens the
-  report.
+- **Revit front door** is the pyRevit extension, written in Python and run by
+  pyRevit's CPython runtime, so the manifest-assembly / bundle-IO /
+  engine-invocation / verdict-mapping logic is real, CI-tested CPython rather than
+  untestable C#. It extracts the manifest from the live model, exports floorplans
+  with their transforms, invokes the engine out-of-process on returned captures,
+  colors devices by verdict, and opens the report. The original C# `revit-addin/`
+  is retained legacy, CI-gated off, pending live validation.
 - **iPhone app** is deliberately a sensor client with no analysis logic. The pure
   parts live in the `CaElevationKit` SwiftPM library (builds/tests headlessly,
   no ARKit dependency); the SwiftUI + ARKit layer is an Xcode App target on top.
@@ -57,7 +59,7 @@ The engine only ever sees two documented payloads. This seam exists because the
 out-of-process boundary needs a defined wire format anyway, and because it is
 what makes the engine unit-testable with no live Revit session and no device.
 
-- **Spec manifest** (add-in -> engine): the *expected* world. Devices with stable
+- **Spec manifest** (front door -> engine): the *expected* world. Devices with stable
   ids, family/type, 3D position, mounting height, orientation, per-device
   tolerances, and their level/elevation; plus floorplan images and the
   plan-pixel-to-model affine per level.
@@ -66,7 +68,7 @@ what makes the engine unit-testable with no live Revit session and no device.
   floorplan pin (x,y) + heading.
 - **Verdict report** (engine output): per-device verdicts (`pass` / `flag` /
   `absent` / `type_mismatch`) with measured deltas, confidence, and a summary;
-  consumed by the add-in for write-back and by the report renderer.
+  consumed by the front door for write-back and by the report renderer.
 
 All three are defined by JSON Schema under
 `engine/src/ca_elevation_engine/schemas/` and are the contract every component

@@ -1,13 +1,13 @@
 # As-Built Elevation Verification Tool -- design sketch
 
-**Status:** Draft -- 2026-06-28. Architecture and UX sketch for a NEW standalone repo
-(**CA Elevation Review** -- name decided). This document lives in the Sterling specs folder for now because
-that is where design work happens today; it will move to the new repo's `docs/` once that repo is
-scaffolded. Nothing here is implemented yet.
+**Status:** Draft -- last updated 2026-06-29. Architecture and UX sketch for this repo
+(**CA Elevation Review** -- name decided). The repo is now scaffolded and this document lives in its `docs/`.
+Phase 0 (engine + fixtures + CI) is in progress -- see [`../README.md`](../README.md) for the
+current build state.
 
 **Scope of this document:** capture the product shape, the three-component architecture, the field
-and desktop UX, the verification pipeline, the testing/CI discipline to port from this repo, the
-build phasing, and the human-vs-Claude responsibility split. It is a sketch to argue from, not a
+and desktop UX, the verification pipeline, the testing/CI discipline ported from the Sterling repo,
+the build phasing, and the human-vs-Claude responsibility split. It is a sketch to argue from, not a
 final contract; open questions are listed at the end.
 
 ---
@@ -52,8 +52,8 @@ verdict and an issuable report. That is the wedge.
 
 ```
 +--------------------+        local file        +-----------------------+
-|  iPhone capture    |  ----- field bundle --->  |  Revit C# add-in      |
-|  app (Swift/ARKit) |  <---- capture pkg ------  |  (.NET)               |
+|  iPhone capture    |  ----- field bundle --->  |  pyRevit extension    |
+|  app (Swift/ARKit) |  <---- capture pkg ------  |  (Python, Windows)    |
 +--------------------+                            +-----------+-----------+
                                                               | invokes (out-of-process)
                                                               v
@@ -77,15 +77,23 @@ verdict and an issuable report. That is the wedge.
    wheels are fragile to load inside Revit's process). It is independently runnable, so contributors
    can hack the brain without owning Revit or an iPhone.
 
-3. **Revit C# add-in (.NET) -- front door, spec source, result sink.**
-   Chosen over a pyRevit extension so paying/free users do not have to install pyRevit first; a
-   signed .NET add-in with a real installer is how a commercial Revit product ships. It extracts the
-   spec manifest from the live model, exports floorplans (with their coordinate transforms) into the
-   field bundle, invokes the CPython engine out-of-process on returned captures, renders verdicts
-   back into the model (color devices by pass/fail), and opens the report.
+3. **Revit front door (pyRevit extension, Python) -- spec source, engine invoker, result sink.**
+   Written in Python and run by pyRevit's CPython runtime. It extracts the spec manifest from the
+   live model, exports floorplans (with their coordinate transforms) into the field bundle, invokes
+   the CPython engine out-of-process on returned captures, renders verdicts back into the model
+   (color devices by pass/fail), and opens the report. Moving the front door off C# turns the
+   manifest-assembly / bundle-IO / engine-invocation / verdict-mapping logic into real, CI-tested
+   CPython that reuses the engine's own models and schemas; only the live Revit-API-touching pieces
+   stay validated on hardware. See [`pyrevit-migration-plan.md`](pyrevit-migration-plan.md).
 
-This is a separate product from the Sterling pyRevit extension. That extension stays Ed's internal
-toolset; this is a public, productized tool.
+   The original **C# .NET add-in** (`revit-addin/`) was the first front door and is now **retained
+   legacy** -- kept one cycle, CI-gated off, pending live validation of the pyRevit extension. It is
+   the only artifact preserving the signed-installer / closed-tier commercial option (the path that
+   originally argued for C#).
+
+This is a separate product from the Sterling pyRevit extension that stays Ed's internal toolset;
+this is the public, productized tool. The two now share the pyRevit distribution surface but remain
+distinct extensions.
 
 ### The internal seam
 
@@ -149,13 +157,13 @@ geometry from protruding devices as approximate.
 Design intent: steps 3-4 are the entire per-shot burden -- shoot, glance, tap, confirm. That is the
 "no slower than manual" budget.
 
-### Desktop flow (Revit add-in)
+### Desktop flow (Revit front door)
 
-1. **Export field bundle.** Select level(s) / scope box -> add-in extracts the spec manifest and
-   floorplans -> writes a bundle file to hand to the phone.
+1. **Export field bundle.** Select level(s) / scope box -> the front door extracts the spec manifest
+   and floorplans -> writes a bundle file to hand to the phone.
 2. *(field capture happens)*
-3. **Import captures.** Point the add-in at the returned capture package -> it invokes the CPython
-   engine out-of-process and shows progress.
+3. **Import captures.** Point the front door at the returned capture package -> it invokes the
+   CPython engine out-of-process and shows progress.
 4. **Review verdicts.** A per-device table (pass / flag / absent / type-mismatch, with confidence),
    a side-by-side of rendered elevation vs registered capture for any flagged item, and a 3D overlay
    in the model coloring devices by verdict. Ambiguous device *identities* are surfaced here for
@@ -198,19 +206,19 @@ sub-inch accuracy.
 
 ## Porting the testing / CI / fixture discipline
 
-The hard-won discipline in this repo transfers as *principles*, not IronPython specifics. The new
-repo recreates each, adapted to a three-language stack.
+The hard-won discipline from the Sterling pyRevit repo transfers as *principles*, not IronPython
+specifics. This repo recreates each, adapted to a three-language stack.
 
 1. **Fixture as immutable single source of truth, built by seeders.**
-   This repo enumerates fixture contents as `PROJECT_INVARIANTS` (each an `F-NN` id + title +
+   The Sterling repo enumerates fixture contents as `PROJECT_INVARIANTS` (each an `F-NN` id + title +
    verifier) and builds them with deterministic, version-gated `fNN_<slug>.py` seeders; ad-hoc
-   fixture mutation is forbidden. Port: the new repo needs (a) a sample Revit model for
+   fixture mutation is forbidden. Port: this repo needs (a) a sample Revit model for
    manifest-extraction tests, (b) synthetic + at least one real capture package (E57 + posed
    images + pins), and (c) golden expected reports. Each fixture property gets an invariant id +
    verifier; seeders build them deterministically; tests read, never write.
 
 2. **Registry as single source of truth + coverage ratchets.**
-   This repo's `REGISTRY` declares every tool with its contracts, and `test_testing_registry.py`
+   The Sterling repo's `REGISTRY` declares every tool with its contracts, and `test_testing_registry.py`
    enforces one-way coverage ratchets (every tool folder registered or explicitly waived; new
    smoke-only entries capped at zero; allowlists purged of stale entries). Port: a registry of
    engine checks and capture scenarios, with ratchet tests that fail when a new check or supported
@@ -225,20 +233,21 @@ repo recreates each, adapted to a three-language stack.
    - *Headless unit* (engine pure math + IO, no Revit, no device) -- the bulk, run everywhere.
    - *Integration* (engine over fixture capture packages -> golden reports; snapshot/golden-file
      comparison for determinism).
-   - *Live* (Revit add-in against a real Revit install; iOS app on a real LiDAR device) -- gated and
-     largely manual, attested by immutable per-SHA commit status, never blocking the unit CI.
+   - *Live* (the Revit front door against a real Revit install; iOS app on a real LiDAR device) --
+     gated and largely manual, attested by immutable per-SHA commit status, never blocking the unit CI.
 
-5. **Pre-commit mirrors CI, per language.** Python (ruff/flake8 + mypy + pytest), C#
-   (`dotnet format` + build + test), Swift (swiftlint + `swift build`/test), plus gitleaks secret
-   scanning. Keep the local suite fast; expensive/live checks stay opt-in (pre-push), with
-   documented escape hatches.
+5. **Pre-commit mirrors CI, per language.** Python -- engine + pyRevit extension -- (ruff + mypy +
+   pytest), Swift (swiftlint + `swift build`/test), plus gitleaks secret scanning. The retained-legacy
+   C# add-in's `dotnet format` + build hook stays gated. Keep the local suite fast; expensive/live
+   checks stay opt-in (pre-push), with documented escape hatches.
 
-6. **CI matrix across components.** Python on Linux, the C# add-in on Windows (against Revit API
-   reference assemblies), the Swift app on macOS. Each component independently buildable and
-   testable so a break is localized.
+6. **CI matrix across components.** The engine (Python) on Linux, the pyRevit extension (Python) on
+   Linux with its live Revit-API pieces gated to manual Windows validation, the Swift app on macOS;
+   the legacy C# add-in is CI-gated off. Each component independently buildable and testable so a
+   break is localized.
 
 7. **Separation of pure logic from platform-coupled code** (the testability rule), applied to all
-   three: engine math vs IO; add-in logic vs Revit API; app logic vs ARKit.
+   three: engine math vs IO; front-door logic vs Revit API; app logic vs ARKit.
 
 8. **Fail-closed gates keyed to immutable commit state**, kill-switch label to decouple code review
    from CI lock, release flow separate from PR flow -- recreated as-is.
@@ -247,15 +256,17 @@ repo recreates each, adapted to a three-language stack.
 
 ## Build phasing (de-risking the commitment)
 
-This is genuinely three components plus a desktop installer. Phasing finds out early whether the
+This is genuinely three components across three languages. Phasing finds out early whether the
 core is trustworthy before effort rides on it. Each phase is independently demoable.
 
 - **Phase 0 -- Engine + fixtures + CI.** Build the CPython engine and prove it emits verdicts worth
   staking a report on, fed by *off-the-shelf* scanner exports (SiteScape/Polycam E57 + posed
-  images). No custom app, no add-in yet. This validates the brain cheaply.
-- **Phase 1 -- Revit C# add-in.** Manifest extraction, floorplan/bundle export, engine invocation,
-  verdict write-back, report generation. Now it is a usable desktop tool for anyone who can produce
-  a scan.
+  images). No custom app, no Revit front door yet. This validates the brain cheaply.
+- **Phase 1 -- Revit front door (pyRevit extension).** Manifest extraction, floorplan/bundle export,
+  engine invocation, verdict write-back, report generation, built as a pyRevit CPython extension
+  ([`pyrevit-migration-plan.md`](pyrevit-migration-plan.md)). Now it is a usable desktop tool for
+  anyone who can produce a scan. The original C# add-in (`revit-addin/`) is retained legacy,
+  CI-gated off, pending live validation.
 - **Phase 2 -- iPhone capture app.** Pin + heading + depth + pose capture, bundle round-trip. This
   removes the last friction and delivers the integrated product.
 
@@ -300,13 +311,14 @@ The app name is **decided: CA Elevation Review** (no longer open).
 
 1. **Bundle transfer mechanism.** AirDrop vs iCloud Drive vs Files vs cable -- pick the default
    round-trip UX (local-only, no sync server).
-2. **Revit version targets.** Which years (2024 / 2025 / 2026) does the add-in support at launch?
+2. **Revit version targets.** Which years does the Revit front door support at launch? The legacy
+   C# add-in targets 2024-2027; the pyRevit version floor is still open (see
+   [`pyrevit-migration-plan.md`](pyrevit-migration-plan.md)).
 3. **Minimum iPhone.** Confirm iPhone Pro w/ LiDAR; which generation floor.
 4. **Vision model for device typing.** On-device CoreML in the app vs desktop-side in the engine;
    which model; how much it is leaned on given identity stays human-confirmed in v1.
 5. **Report format.** PDF vs HTML as the primary deliverable.
 6. **Manifest + capture-package schema.** Lock the field list and JSON-Schema before Phase 0 tests.
-7. **Where the new repo lives** and when to scaffold it (with the CI/fixture skeleton from day one).
 
 ---
 
