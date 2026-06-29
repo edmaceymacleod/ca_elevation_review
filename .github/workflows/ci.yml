@@ -29,6 +29,7 @@ jobs:
   changes:
     name: detect changes
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       engine: ${{ steps.filter.outputs.engine }}
       pyrevit: ${{ steps.filter.outputs.pyrevit }}
@@ -67,6 +68,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.engine == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -96,6 +98,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.pyrevit == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -126,6 +129,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.pyrevit == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -151,6 +155,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.schema == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
@@ -168,6 +173,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.ios == 'true'
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - run: swift --version
@@ -204,6 +210,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.ios == 'true'
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Install XcodeGen
@@ -232,6 +239,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.revit == 'true'
     runs-on: windows-latest
+    timeout-minutes: 30
     env:
       SOLUTION: revit-addin/CaElevationReview.sln
     steps:
@@ -256,6 +264,7 @@ jobs:
   secret_scan:
     name: gitleaks
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -271,6 +280,7 @@ jobs:
     if: always()
     needs: [changes, engine, pyrevit_floor, pyrevit_engine, schema, ios_kit, ios_app, revit, secret_scan]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Gate on required jobs (success or skipped; revit is non-gating)
         run: |

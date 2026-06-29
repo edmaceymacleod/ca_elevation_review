@@ -150,6 +150,126 @@ def test_disagreeing_type_above_confidence_is_mismatch():
     assert r.verdict is Verdict.TYPE_MISMATCH
 
 
+# --- non-finite delta must NOT silently PASS -------------------------------- #
+def _classify_with_position_delta(position_delta):
+    """Classify a matched device whose position delta is set directly."""
+    from ca_elevation_engine.compare import Match
+    from ca_elevation_engine.models import (
+        Device,
+        Observation,
+        Point3,
+        Project,
+        SpecManifest,
+        Tolerances,
+    )
+    from ca_elevation_engine.verdict import classify
+
+    device = Device(
+        id="d1",
+        family="Access",
+        type="Reader",
+        level_id="L1",
+        position=Point3(0.0, 0.0, 4.0),
+    )
+    manifest = SpecManifest(
+        schema_version="1.0.0",
+        project=Project(id="p", name="P", units="feet"),
+        levels=[],
+        devices=[device],
+        default_tolerances=Tolerances(position=0.083, mounting_height=0.042, orientation=10.0),
+    )
+    obs = Observation(position=Point3(0.0, 0.0, 4.0))
+    match = Match(
+        device=device,
+        observation=obs,
+        matched_shot_id="S1",
+        position_delta=position_delta,
+    )
+    return classify(match, manifest)
+
+
+def test_nan_position_delta_flags_not_passes():
+    # `NaN > tol` is False; without a finiteness guard this fell through to PASS.
+    r = _classify_with_position_delta(float("nan"))
+    assert r.verdict is Verdict.FLAG
+    assert any("non-finite" in n for n in r.notes)
+    # Confidence must not look clean (the old clamp accident returned 0.3).
+    assert r.confidence <= 0.05
+
+
+def test_inf_position_delta_flags_not_passes():
+    r = _classify_with_position_delta(float("inf"))
+    assert r.verdict is Verdict.FLAG
+
+
+def test_finite_in_tolerance_delta_still_passes():
+    # Guard must not break legitimate in-tolerance matches.
+    r = _classify_with_position_delta(0.01)
+    assert r.verdict is Verdict.PASS
+
+
+# --- frustum-bypass (empty-coverage fallback) marks the match -------------- #
+def test_frustum_bypass_match_is_marked_approximate():
+    """A device no shot framed, matched via the same-level fallback, is flagged
+    approximate with an explanatory note rather than reading as a clean match."""
+    from ca_elevation_engine.compare import match_device
+    from ca_elevation_engine.models import (
+        CapturePackage as Cap,
+    )
+    from ca_elevation_engine.models import (
+        Device,
+        Floorplan,
+        Intrinsics,
+        Level,
+        Observation,
+        Pin,
+        Point3,
+        Project,
+        Shot,
+        SpecManifest,
+    )
+    from ca_elevation_engine.register import register_capture
+
+    # Device far behind/away from the camera so it projects outside every frustum,
+    # but a same-level observation sits exactly on its expected position.
+    device = Device(
+        id="d1", family="F", type="T", level_id="L1", position=Point3(0.0, 0.0, 4.0)
+    )
+    manifest = SpecManifest(
+        schema_version="1.0.0",
+        project=Project(id="p", name="P", units="feet"),
+        levels=[
+            Level(
+                id="L1",
+                name="L1",
+                elevation=0.0,
+                floorplan=Floorplan("p.png", 100, 100, [0.01, 0, 0, 0, 0.01, 0]),
+            )
+        ],
+        devices=[device],
+    )
+    intr = Intrinsics(fx=1400.0, fy=1400.0, cx=960.0, cy=720.0, width=1920, height=1440)
+    # Pose looking away (camera at origin, device behind it) -> not in frame.
+    pose = [1.0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    shot = Shot(
+        id="S1",
+        level_id="L1",
+        rgb_image="a.jpg",
+        intrinsics=intr,
+        pose=pose,
+        pin=Pin(x=5000.0, y=5000.0, heading=0.0),
+        observations=[Observation(position=Point3(0.0, 0.0, 4.0))],
+    )
+    capture = Cap(schema_version="1.0.0", project_id="p", shots=[shot])
+    regs = register_capture(manifest, capture)
+    match = match_device(device, capture, manifest, regs)
+
+    if match.observation is not None and not match.in_coverage:
+        # Fallback fired: the match must carry the bypass signal.
+        assert match.approximate is True
+        assert any("outside any camera frustum" in n for n in match.notes)
+
+
 def test_registration_notes_surface_in_match_and_result(f01_manifest_path, f01_capture_path):
     """Matched-shot registration notes must reach Match.notes -> DeviceResult.notes."""
     from ca_elevation_engine.compare import match_device

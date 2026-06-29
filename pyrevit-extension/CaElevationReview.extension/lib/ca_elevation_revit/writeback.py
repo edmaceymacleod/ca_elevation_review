@@ -89,7 +89,23 @@ def overrides_for_report(report: dict) -> List[DeviceOverride]:
         if not device_id:
             logger.warning("device result with no device_id skipped: %r", result)
             continue
+        if not verdict:
+            # A missing/empty verdict is a STRUCTURALLY MALFORMED per-device record
+            # (the schema marks verdict required), distinct from a present-but-
+            # unrecognised verdict (engine-enum drift). Log it with its own message
+            # and apply the sentinel colour DIRECTLY -- routing "" through
+            # color_for_verdict would emit the generic "unmapped verdict -> sentinel"
+            # warning, conflating a corrupt record with engine-enum drift. We still
+            # render the loud sentinel (the module's fail-soft contract).
+            logger.warning(
+                "device result %r has missing/empty verdict; rendering sentinel "
+                "colour (report record may be corrupt)",
+                device_id,
+            )
+            color = SENTINEL_COLOR
+        else:
+            color = color_for_verdict(verdict)
         if device_id in by_id:
             logger.warning("duplicate device_id %r in report; last result wins", device_id)
-        by_id[device_id] = DeviceOverride(device_id, verdict, color_for_verdict(verdict))
+        by_id[device_id] = DeviceOverride(device_id, verdict, color)
     return list(by_id.values())

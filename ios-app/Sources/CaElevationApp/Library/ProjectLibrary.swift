@@ -75,8 +75,19 @@ final class ProjectLibrary {
             return
         }
         if resolved.isStale {
-            // Refresh the bookmark while the URL still resolves.
-            try? RootFolderStore.save(resolved.url)
+            // Refresh the bookmark while the URL still resolves. Non-fatal for
+            // this session (we adopt the resolved URL regardless), but log a
+            // failure: a stale bookmark left in place can make a future launch
+            // forget the root with no breadcrumb otherwise.
+            do {
+                try RootFolderStore.save(resolved.url)
+            } catch {
+                #if canImport(OSLog)
+                Log.bundle.error(
+                    "Failed to refresh stale root bookmark: \(error.localizedDescription, privacy: .public)"
+                )
+                #endif
+            }
         }
         await adopt(resolved.url)
     }

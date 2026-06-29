@@ -19,6 +19,7 @@ subprocess will surface a clear error if it is absent).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -26,6 +27,8 @@ from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Sequence
 
 from . import config
+
+logger = logging.getLogger(__name__)
 
 
 class EngineNotFoundError(RuntimeError):
@@ -145,6 +148,10 @@ class EngineRun:
     report_path: Optional[str]  # the rendered report (pdf or html), or None
     stdout: str
     stderr: str
+    # Set when verdict_report.json existed but could not be read/parsed (a
+    # truncated/corrupt report). When this is set, ``ok`` is False even on a
+    # 0 exit code, so the front door cannot present a corrupt report as success.
+    report_error: Optional[str] = None
 
     @property
     def status(self) -> str:
@@ -152,7 +159,10 @@ class EngineRun:
 
     @property
     def ok(self) -> bool:
-        return self.returncode == 0
+        # A 0 exit code is necessary but not sufficient: an engine that exited
+        # cleanly yet wrote an unreadable report is NOT ok, otherwise a corrupt
+        # review would be presented as a passing one.
+        return self.returncode == 0 and self.report_error is None
 
 
 def classify_exit(returncode: int) -> str:
@@ -207,13 +217,19 @@ def run_engine(
     proc = runner(argv, capture_output=True, text=True)
 
     report = None
+    report_error = None
     json_path = os.path.join(out_dir, "verdict_report.json")
     if exists(json_path):
         try:
             with open(json_path, encoding="utf-8") as fh:
                 report = json.load(fh)
-        except (json.JSONDecodeError, OSError):
-            report = None  # written-but-unreadable; status still reflects exit code
+        except (json.JSONDecodeError, OSError) as exc:
+            # Written-but-unreadable. Surface it: record the error so ``ok`` is
+            # False (a corrupt report after exit 0 is NOT a passing review) and
+            # log so the failure is not swallowed silently.
+            report = None
+            report_error = f"could not read {json_path}: {exc}"
+            logger.exception("verdict_report.json present but unreadable: %s", json_path)
 
     return EngineRun(
         returncode=proc.returncode,
@@ -221,6 +237,7 @@ def run_engine(
         report_path=_find_report(out_dir, exists=exists),
         stdout=proc.stdout or "",
         stderr=proc.stderr or "",
+        report_error=report_error,
     )
 
 

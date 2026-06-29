@@ -29,6 +29,9 @@ import RealityKit
 #if canImport(CoreImage)
 import CoreImage
 #endif
+#if canImport(CoreVideo)
+import CoreVideo
+#endif
 
 /// A frozen snapshot of the sensors at capture time, handed to PlacePinView /
 /// CaptureExporter. The image / depth payloads are kept as encodable bytes so
@@ -129,11 +132,14 @@ final class ARCaptureSession: ObservableObject {
         // ROW-MAJOR array to match the capture-package schema.
         let pose = Self.rowMajor(frame.camera.transform)
 
-        // LiDAR depth: float32 meters, row-major HxW.
+        // LiDAR depth: float32 meters, row-major HxW. A nil result means the
+        // depth buffer couldn't be read (lock failure / unexpected format); treat
+        // it as "no depth for this shot" rather than emitting an empty file with a
+        // declared size (see Log.capture inside encodeDepth for the reason).
         var depthData: Data?
         var depthSize: (Int, Int)?
-        if let sceneDepth = frame.sceneDepth {
-            let (data, size) = Self.encodeDepth(sceneDepth.depthMap)
+        if let sceneDepth = frame.sceneDepth,
+           let (data, size) = Self.encodeDepth(sceneDepth.depthMap) {
             depthData = data
             depthSize = size
         }
@@ -176,19 +182,42 @@ final class ARCaptureSession: ObservableObject {
     }
 
     /// Read a float32 depth map (meters) into row-major bytes + (H,W).
-    static func encodeDepth(_ depthMap: CVPixelBuffer) -> (Data, (Int, Int)) {
-        CVPixelBufferLockBaseAddress(depthMap, .readOnly)
+    ///
+    /// Returns nil — never a partial/empty buffer with a declared size — if the
+    /// pixel format isn't float32 depth, the buffer can't be locked, or the base
+    /// address is unexpectedly nil. The caller treats nil as "no depth for this
+    /// shot" rather than staging a 0-byte file that claims to be HxW (which would
+    /// silently corrupt the engine's metric depth; see CLAUDE.md rule 4).
+    static func encodeDepth(_ depthMap: CVPixelBuffer) -> (Data, (Int, Int))? {
+        let format = CVPixelBufferGetPixelFormatType(depthMap)
+        guard format == kCVPixelFormatType_DepthFloat32 else {
+            #if canImport(OSLog)
+            Log.capture.error("Depth format not DepthFloat32 (\(format, privacy: .public)); skipping depth")
+            #endif
+            return nil
+        }
+        let lockResult = CVPixelBufferLockBaseAddress(depthMap, .readOnly)
+        guard lockResult == kCVReturnSuccess else {
+            #if canImport(OSLog)
+            Log.capture.error("Depth buffer lock failed (\(lockResult, privacy: .public)); skipping depth")
+            #endif
+            return nil
+        }
         defer { CVPixelBufferUnlockBaseAddress(depthMap, .readOnly) }
         let width = CVPixelBufferGetWidth(depthMap)
         let height = CVPixelBufferGetHeight(depthMap)
         let bytesPerRow = CVPixelBufferGetBytesPerRow(depthMap)
+        guard let base = CVPixelBufferGetBaseAddress(depthMap) else {
+            #if canImport(OSLog)
+            Log.capture.error("CVPixelBufferGetBaseAddress returned nil; skipping depth")
+            #endif
+            return nil
+        }
         var out = Data(capacity: width * height * MemoryLayout<Float32>.size)
-        if let base = CVPixelBufferGetBaseAddress(depthMap) {
-            // Copy row by row to drop any row padding -> tightly packed HxW.
-            for row in 0..<height {
-                let rowPtr = base.advanced(by: row * bytesPerRow)
-                out.append(Data(bytes: rowPtr, count: width * MemoryLayout<Float32>.size))
-            }
+        // Copy row by row to drop any row padding -> tightly packed HxW.
+        for row in 0..<height {
+            let rowPtr = base.advanced(by: row * bytesPerRow)
+            out.append(Data(bytes: rowPtr, count: width * MemoryLayout<Float32>.size))
         }
         return (out, (height, width))
     }

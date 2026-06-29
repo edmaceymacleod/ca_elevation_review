@@ -74,3 +74,42 @@ def test_capture_unknown_level_raises(f01_manifest_path, f01_capture_path):
 def test_missing_file_raises():
     with pytest.raises(FileNotFoundError):
         ingest.load_manifest("/no/such/file.json")
+
+
+# --- non-finite (NaN/Inf) rejection at ingest ------------------------------ #
+def test_nan_coordinate_in_capture_rejected(f01_capture_path):
+    # json.loads accepts the bare `NaN` token and the schema's `number` type does
+    # not reject it; ingest must fail closed before it can mask a verdict breach.
+    data = json.loads(f01_capture_path.read_text())
+    data["shots"][0]["observations"][0]["position"]["x"] = float("nan")
+    with pytest.raises(ValidationError, match="non-finite"):
+        ingest.parse_capture(data)
+
+
+def test_inf_coordinate_in_manifest_rejected(f01_manifest_path):
+    data = json.loads(f01_manifest_path.read_text())
+    data["devices"][0]["position"]["z"] = float("inf")
+    with pytest.raises(ValidationError, match="non-finite"):
+        ingest.parse_manifest(data)
+
+
+def test_nan_token_via_json_text_rejected(tmp_path, f01_capture_path):
+    # End-to-end: a literal `NaN` JSON token reaches load_capture and is rejected.
+    data = json.loads(f01_capture_path.read_text())
+    data["shots"][0]["pose"][3] = float("nan")
+    bad = tmp_path / "cap.json"
+    bad.write_text(json.dumps(data))  # default json.dumps emits the bare NaN token
+    assert "NaN" in bad.read_text()
+    with pytest.raises(ValidationError, match="non-finite"):
+        ingest.load_capture(bad)
+
+
+def test_no_validate_skips_finite_check(f01_capture_path):
+    # With validation off, the finite guard is bypassed (documented trade-off);
+    # the run carries a warning instead (see test_cli).
+    data = json.loads(f01_capture_path.read_text())
+    data["shots"][0]["observations"][0]["position"]["x"] = float("nan")
+    capture = ingest.parse_capture(data, validate=False)  # does not raise
+    import math
+
+    assert math.isnan(capture.shots[0].observations[0].position.x)

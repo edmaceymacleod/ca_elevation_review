@@ -16,5 +16,11 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 
 def render_json(report: VerdictReport) -> str:
-    """Return the pretty-printed JSON string for ``report``."""
-    return json.dumps(report.to_dict(), indent=2, sort_keys=True)
+    """Return the pretty-printed JSON string for ``report``.
+
+    ``allow_nan=False`` so a non-finite delta/confidence raises ``ValueError``
+    here instead of emitting the bare ``NaN``/``Infinity`` tokens, which are not
+    valid JSON (RFC 8259) and would break a standards-compliant consumer after
+    the engine reported success.
+    """
+    return json.dumps(report.to_dict(), indent=2, sort_keys=True, allow_nan=False)

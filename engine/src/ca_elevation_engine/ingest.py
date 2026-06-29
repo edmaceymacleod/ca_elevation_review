@@ -12,6 +12,7 @@ with the typed models from :mod:`ca_elevation_engine.models`.
 from __future__ import annotations
 
 import json
+import math
 from functools import cache
 from importlib import resources
 from pathlib import Path
@@ -57,6 +58,29 @@ def _validate(instance: dict[str, Any], schema_name: str) -> None:
         )
 
 
+def _check_finite(instance: Any, schema_name: str, path: tuple[str, ...] = ()) -> None:
+    """Reject non-finite numbers (NaN/Inf) anywhere in a parsed payload.
+
+    ``json.loads`` accepts the non-standard ``NaN``/``Infinity`` tokens by
+    default, and JSON-Schema's ``type: number`` does NOT reject them, so a
+    non-finite coordinate would otherwise flow into registration/verdict and
+    silently mask a breach (``NaN > tol`` is False). Walk the parsed structure
+    and fail closed before the typed models are built. Booleans are ``int``
+    subclasses but always finite, so they pass.
+    """
+    if isinstance(instance, float) and not math.isfinite(instance):
+        loc = "/".join(path) or "<root>"
+        raise ValidationError(
+            f"{schema_name} contains a non-finite number (NaN/Infinity) at {loc}"
+        )
+    if isinstance(instance, dict):
+        for key, value in instance.items():
+            _check_finite(value, schema_name, (*path, str(key)))
+    elif isinstance(instance, list):
+        for i, value in enumerate(instance):
+            _check_finite(value, schema_name, (*path, str(i)))
+
+
 def _read_json(path: str | Path) -> dict[str, Any]:
     p = Path(path)
     if not p.exists():
@@ -70,6 +94,7 @@ def _read_json(path: str | Path) -> dict[str, Any]:
 def parse_manifest(data: dict[str, Any], *, validate: bool = True) -> SpecManifest:
     """Validate (optional) and parse a manifest dict into a :class:`SpecManifest`."""
     if validate:
+        _check_finite(data, "spec_manifest")
         _validate(data, "spec_manifest")
     manifest = SpecManifest.from_dict(data)
     _check_manifest_internal(manifest)
@@ -79,6 +104,7 @@ def parse_manifest(data: dict[str, Any], *, validate: bool = True) -> SpecManife
 def parse_capture(data: dict[str, Any], *, validate: bool = True) -> CapturePackage:
     """Validate (optional) and parse a capture dict into a :class:`CapturePackage`."""
     if validate:
+        _check_finite(data, "capture_package")
         _validate(data, "capture_package")
     return CapturePackage.from_dict(data)
 

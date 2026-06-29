@@ -14,6 +14,7 @@ upstream concern; this module is agnostic to where observations came from.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from . import geometry as geo
@@ -113,11 +114,16 @@ def _candidate_observations(
     device: Device,
     capture: CapturePackage,
     coverage: list[ShotCoverage],
-) -> list[tuple[str, Observation]]:
-    """Gather (shot_id, observation) candidates from shots that cover the device."""
+) -> tuple[list[tuple[str, Observation]], bool]:
+    """Gather (shot_id, observation) candidates from shots that cover the device.
+
+    Returns ``(candidates, frustum_bypassed)``. ``frustum_bypassed`` is True when
+    no shot actually framed the device and we fell back to all same-level shots
+    (keeps a near miss matchable) -- the caller marks the resulting match so the
+    verdict reflects that the association rests outside any camera frustum.
+    """
     covering = {c.shot_id for c in coverage if c.in_frame}
-    # Fall back to all same-level shots if frustum coverage found nothing but
-    # observations exist (keeps a near miss matchable).
+    frustum_bypassed = not covering
     out: list[tuple[str, Observation]] = []
     for shot in capture.shots:
         if shot.level_id != device.level_id:
@@ -126,7 +132,7 @@ def _candidate_observations(
             continue
         for obs in shot.observations:
             out.append((shot.id, obs))
-    return out
+    return out, frustum_bypassed
 
 
 def match_device(
@@ -145,7 +151,7 @@ def match_device(
     pos_tol = tol.position if tol.position is not None else GATE_ABS_FLOOR
     gate = max(pos_tol * GATE_TOLERANCE_MULT, GATE_ABS_FLOOR)
 
-    candidates = _candidate_observations(device, capture, coverage)
+    candidates, frustum_bypassed = _candidate_observations(device, capture, coverage)
     expected = device.position.as_tuple()
 
     # Among in-gate candidates, prefer a type-AGREEING (or type-unknown)
@@ -158,7 +164,10 @@ def match_device(
     best_key: tuple[bool, float] | None = None
     for shot_id, obs in candidates:
         d = geo.distance3(expected, obs.position.as_tuple())
-        if d > gate:
+        # A non-finite distance means corrupt/degenerate geometry. `NaN > gate`
+        # is False, so without this guard a NaN-distance candidate would slip
+        # through the gate and carry NaN into the verdict (silent PASS).
+        if not math.isfinite(d) or d > gate:
             continue
         disagrees = bool(
             obs.detected_type
@@ -205,6 +214,17 @@ def match_device(
     match.approximate = shot is None or (shot.depth_map is None and shot.point_cloud is None)
     if match.approximate:
         match.notes.append("geometry approximate (no metric depth for matched shot)")
+
+    if frustum_bypassed:
+        # No shot framed the device; this match rests on an out-of-frustum
+        # association from the same-level fallback. Mark it approximate so the
+        # verdict confidence is discounted rather than reading like a properly
+        # framed match.
+        match.approximate = True
+        match.notes.append(
+            "matched outside any camera frustum (no shot framed this device; "
+            "same-level fallback association)"
+        )
     return match
 
 

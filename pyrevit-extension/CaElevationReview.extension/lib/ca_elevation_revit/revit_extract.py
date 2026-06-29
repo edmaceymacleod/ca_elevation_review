@@ -195,7 +195,11 @@ def _resolve_orientation(el) -> Optional[dict]:  # noqa: ANN001
     return {"facing_angle": angle, "up_axis": "up"}
 
 
-def extract_devices(doc, level_lookup: Dict[int, str]) -> List[dict]:  # noqa: ANN001
+def extract_devices(
+    doc,  # noqa: ANN001
+    level_lookup: Dict[int, str],
+    stats: Optional[Dict[str, int]] = None,
+) -> List[dict]:
     """Collect installed devices as shaped device dicts. LIVE.
 
     Identity invariant: stamp each element's **UniqueId** (stable GUID-like
@@ -208,6 +212,13 @@ def extract_devices(doc, level_lookup: Dict[int, str]) -> List[dict]:  # noqa: A
     level (``build_manifest`` would reject the unknown ``level_id``), so it is
     skipped. Per-element processing is wrapped so one bad element cannot abort the
     walk; skips and errors are counted and logged.
+
+    ``stats`` is an optional dict the caller can pass in to RECEIVE the per-walk
+    tallies (keys ``devices``/``skipped_level``/``skipped_location``/``errors``).
+    A non-zero ``errors`` means real devices were dropped mid-extraction, so the
+    review is INCOMPLETE -- the caller should surface that to the user (an INFO log
+    is not visible inside pyRevit). The return value stays ``List[dict]`` so
+    existing callers are unaffected.
     """
     # LIVE: requires Revit.
     from Autodesk.Revit.DB import (
@@ -286,4 +297,9 @@ def extract_devices(doc, level_lookup: Dict[int, str]) -> List[dict]:  # noqa: A
         skipped_location,
         errors,
     )
+    if stats is not None:
+        stats["devices"] = len(devices)
+        stats["skipped_level"] = skipped_level
+        stats["skipped_location"] = skipped_location
+        stats["errors"] = errors
     return devices

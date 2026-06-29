@@ -49,8 +49,12 @@ def main():
     # Out-of-process engine run (PURE/CI-tested runner; engine never imported here).
     result = engine_runner.run_engine(manifest_path, capture_path, out_dir)
     if not result.ok:
+        # report_error means the engine exited cleanly but the verdict report was
+        # unreadable/corrupt; surface that distinctly from a non-zero exit so an
+        # empty review is never presented as a passing one.
+        detail = result.report_error or result.stderr or "(no detail)"
         forms.alert(
-            "Engine {}:\n{}".format(result.status, result.stderr or "(no detail)"),
+            "Engine {}:\n{}".format(result.status, detail),
             title="CA Elevation Review",
         )
         return

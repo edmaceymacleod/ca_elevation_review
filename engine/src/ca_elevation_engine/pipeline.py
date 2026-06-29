@@ -60,7 +60,16 @@ def run_pipeline(
     if not isinstance(capture, CapturePackage):
         capture = ingest.load_capture(capture, validate=validate)
 
-    warnings = ingest.check_compatible(manifest, capture)
+    warnings: list[str] = []
+    if not validate:
+        # Make a skipped-validation run visible: without this, its output is
+        # indistinguishable from a fully validated one (and non-finite
+        # coordinate guards at ingest are bypassed).
+        warnings.append(
+            "JSON-schema validation was SKIPPED (--no-validate); inputs were not "
+            "checked against their schemas or for non-finite coordinates"
+        )
+    warnings.extend(ingest.check_compatible(manifest, capture))
 
     registrations = register_capture(manifest, capture, bundle_dir=bundle_dir)
     matches = match_all(manifest, capture, registrations)

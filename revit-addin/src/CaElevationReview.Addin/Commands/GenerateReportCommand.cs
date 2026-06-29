@@ -79,8 +79,16 @@ namespace CaElevationReview.Addin.Commands
         /// <summary>
         /// Gate before shelling out: the artifact must have an allow-listed extension and
         /// must resolve to a file inside <paramref name="allowedDir"/> (the engine output
-        /// directory). Rejects path-traversal / symlink-style escapes and unknown types.
-        /// Pure (apart from path canonicalisation); exposed for unit testing.
+        /// directory). Rejects path-traversal escapes and unknown types.
+        /// <para>
+        /// On net8 the real on-disk target is resolved (via
+        /// <see cref="FileInfo.ResolveLinkTarget(bool)"/>) before the containment check, so a
+        /// symlink/junction inside the output dir that points elsewhere is also rejected. On
+        /// net48 that API is unavailable, so only lexical (<c>.</c>/<c>..</c>) traversal is
+        /// rejected and reparse points are NOT resolved; the engine output directory is treated
+        /// as trusted there.
+        /// </para>
+        /// Pure (apart from path canonicalisation and link resolution); exposed for unit testing.
         /// </summary>
         public static bool IsAllowedReportArtifact(string path, string allowedDir, out string reason)
         {
@@ -98,8 +106,11 @@ namespace CaElevationReview.Addin.Commands
             }
 
             // Canonicalise both sides and require the artifact to live under the output dir.
-            string fullPath = Path.GetFullPath(path);
-            string fullDir = Path.GetFullPath(allowedDir);
+            // ResolveRealPath additionally collapses symlinks/junctions to their real target
+            // where the framework supports it (net8), so a reparse point planted inside the
+            // output dir that escapes it is caught by the containment check below.
+            string fullPath = ResolveRealPath(Path.GetFullPath(path));
+            string fullDir = ResolveRealPath(Path.GetFullPath(allowedDir));
             string dirPrefix = fullDir.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
                 ? fullDir
                 : fullDir + Path.DirectorySeparatorChar;
@@ -114,12 +125,51 @@ namespace CaElevationReview.Addin.Commands
             return true;
         }
 
+        /// <summary>
+        /// Resolve symlinks/junctions to their real on-disk target so the containment check
+        /// operates on the true location, not a reparse point that lexically lives under the
+        /// output dir. On net8 this follows the final link target; on net48 (where
+        /// <c>ResolveLinkTarget</c> does not exist) it returns the input unchanged, leaving the
+        /// lexical containment check as the only guard there.
+        /// </summary>
+        private static string ResolveRealPath(string fullPath)
+        {
+#if NET6_0_OR_GREATER
+            try
+            {
+                // returnFinalTarget: true walks a chain of links to the ultimate target.
+                FileSystemInfo info = File.Exists(fullPath)
+                    ? new FileInfo(fullPath)
+                    : new DirectoryInfo(fullPath);
+                FileSystemInfo? target = info.ResolveLinkTarget(returnFinalTarget: true);
+                return target?.FullName ?? fullPath;
+            }
+            catch (IOException)
+            {
+                // Broken link / cycle / inaccessible: fall back to the lexical path so the
+                // StartsWith containment check still applies.
+                return fullPath;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return fullPath;
+            }
+#else
+            return fullPath;
+#endif
+        }
+
         private static void OpenWithDefaultHandler(string path)
         {
             // UseShellExecute=true asks the OS to open with the registered handler
             // (browser for .html, viewer for .pdf, editor for .json).
             var psi = new ProcessStartInfo(path) { UseShellExecute = true };
-            Process.Start(psi);
+
+            // Process.Start returns an IDisposable Process; dispose it so the local handle is
+            // released promptly rather than waiting on the finalizer. With UseShellExecute=true
+            // the OS may reuse an existing handler and return null, hence the null-conditional.
+            // Disposing only releases our handle; it does not terminate the launched viewer.
+            Process.Start(psi)?.Dispose();
         }
     }
 }

@@ -79,10 +79,54 @@ def main():
 
     chosen_levels = [name_to_level[name] for name in picked]
     level_id_strs = [str(eid_value(lv.Id)) for lv in chosen_levels]
-    level_lookup = {eid_value(lv.Id): str(eid_value(lv.Id)) for lv in chosen_levels}
 
     floorplans = revit_export.export_floorplans(doc, level_ids=level_id_strs)
-    devices = revit_extract.extract_devices(doc, level_lookup=level_lookup)
+
+    # Reconcile the export/extract gates: a chosen level can be silently skipped by
+    # export (no plan view, collapsed crop, no PNG, ...). Gate device extraction on
+    # the levels that ACTUALLY exported, not on every chosen level -- otherwise a
+    # device on a skipped level survives the extract gate and build_manifest hard-
+    # fails the whole bundle with a confusing "unknown level_id". Devices on
+    # un-exported levels are dropped here (and surfaced below).
+    exported_level_ids = {fp.level_id for fp in floorplans}
+    level_lookup = {
+        eid_value(lv.Id): str(eid_value(lv.Id))
+        for lv in chosen_levels
+        if str(eid_value(lv.Id)) in exported_level_ids
+    }
+    failed_levels = [
+        name
+        for name in picked
+        if str(eid_value(name_to_level[name].Id)) not in exported_level_ids
+    ]
+
+    stats = {}
+    devices = revit_extract.extract_devices(doc, level_lookup=level_lookup, stats=stats)
+
+    if not floorplans:
+        forms.alert(
+            "No levels could be exported (every chosen level was skipped); "
+            "nothing was written. See the console for per-level detail.",
+            title="CA Elevation Review",
+        )
+        return
+
+    # Surface incomplete-review signals the field user would otherwise never see:
+    # levels that failed to export, and devices dropped mid-extraction.
+    warnings = []
+    if failed_levels:
+        warnings.append(
+            "{} level(s) could not be exported and were dropped: {}".format(
+                len(failed_levels), ", ".join(failed_levels)
+            )
+        )
+    if stats.get("errors"):
+        warnings.append(
+            "{} device(s) failed extraction and are MISSING from this review "
+            "(see console).".format(stats["errors"])
+        )
+    if warnings:
+        logger.warning("; ".join(warnings))
 
     # PURE (CI-tested): assemble + write the bundle.
     manifest = manifest_builder.build_manifest(project, floorplans, devices)
@@ -90,7 +134,10 @@ def main():
     if not out_dir:
         return
     written = bundle_io.write_field_bundle(out_dir, manifest, floorplans)
-    forms.alert("Wrote field bundle:\n{}".format(written["manifest"]))
+    msg = "Wrote field bundle:\n{}".format(written["manifest"])
+    if warnings:
+        msg += "\n\nWARNING (review may be incomplete):\n- " + "\n- ".join(warnings)
+    forms.alert(msg)
 
 
 main()

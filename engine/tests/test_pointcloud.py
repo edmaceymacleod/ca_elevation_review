@@ -76,6 +76,34 @@ def test_resolve_cloud_path_rejects_absolute(tmp_path):
         pc.resolve_cloud_path("/etc/passwd", str(tmp_path))
 
 
+def test_resolve_cloud_path_rejects_in_bundle_symlink_escape(tmp_path):
+    # A symlink that physically lives INSIDE the bundle but points outside it
+    # must be rejected: a purely lexical normpath would leave it inside `base`.
+    bundle = tmp_path / "bundle"
+    clouds = bundle / "clouds"
+    clouds.mkdir(parents=True)
+    secret = tmp_path / "secret"
+    secret.mkdir()
+    (secret / "passwd.ply").write_text("nope")
+    link = clouds / "link.ply"
+    link.symlink_to(secret / "passwd.ply")
+    with pytest.raises(pc.PointCloudPathError, match="escapes bundle"):
+        pc.resolve_cloud_path("clouds/link.ply", str(bundle))
+
+
+def test_resolve_cloud_path_allows_in_bundle_symlink(tmp_path):
+    # A symlink that points back INSIDE the bundle stays allowed.
+    bundle = tmp_path / "bundle"
+    clouds = bundle / "clouds"
+    clouds.mkdir(parents=True)
+    real = clouds / "real.ply"
+    real.write_text("data")
+    link = clouds / "link.ply"
+    link.symlink_to(real)
+    out = pc.resolve_cloud_path("clouds/link.ply", str(bundle))
+    assert out == real.resolve()
+
+
 # --- load dispatch / degradation -------------------------------------------- #
 def test_load_point_cloud_missing_bundle_raises():
     with pytest.raises(ValueError):

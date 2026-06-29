@@ -62,6 +62,27 @@ def test_overrides_skips_result_without_device_id():
     assert [o.device_id for o in overrides] == ["uid-2"]
 
 
+def test_overrides_missing_verdict_logs_distinct_warning_not_unmapped(caplog):
+    # A device record missing/empty verdict is a corrupt record, distinct from a
+    # present-but-unrecognised verdict (engine-enum drift). It still gets the loud
+    # sentinel colour (fail-soft), but the log must NOT say "unmapped verdict".
+    report = {"device_results": [{"device_id": "uid-1"}]}  # no verdict key
+    with caplog.at_level(logging.WARNING):
+        overrides = writeback.overrides_for_report(report)
+    assert len(overrides) == 1
+    assert overrides[0].color == SENTINEL_COLOR
+    assert any("missing/empty verdict" in r.message for r in caplog.records)
+    assert not any("unmapped verdict" in r.message for r in caplog.records)
+
+
+def test_overrides_empty_verdict_string_also_flagged_as_missing(caplog):
+    report = {"device_results": [{"device_id": "uid-1", "verdict": ""}]}
+    with caplog.at_level(logging.WARNING):
+        overrides = writeback.overrides_for_report(report)
+    assert overrides[0].color == SENTINEL_COLOR
+    assert any("missing/empty verdict" in r.message for r in caplog.records)
+
+
 # --- engine round-trip (ENGINE, 3.10+) ----------------------------------- #
 @pytest.mark.engine
 def test_overrides_from_real_engine_report(tmp_path, engine_fixtures_dir):

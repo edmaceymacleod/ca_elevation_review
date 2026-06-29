@@ -86,7 +86,13 @@ extension CompassHeading: CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
         // trueHeading is -1 if unavailable (no location fix); fall back to magnetic.
         let heading = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
-        Task { @MainActor in
+        // The CLLocationManager is created on the main thread, so its delegate
+        // callbacks are delivered on the main runloop. Assign inline via
+        // `assumeIsolated` rather than hopping through an unstructured `Task`,
+        // which would defer the write to a later main-thread unit and let a
+        // concurrent `snapshot()` stamp a stale (or nil) heading even though a
+        // fresh reading just landed.
+        MainActor.assumeIsolated {
             self.trueHeadingDegrees = heading
         }
     }

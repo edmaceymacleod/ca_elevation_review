@@ -183,7 +183,12 @@ def refine_registration(
     except pc.PointCloudBackendMissing as exc:
         reg.notes.append(f"point cloud present but backend missing: {exc}; skipped ICP")
         return reg
-    except Exception as exc:  # noqa: BLE001 - degrade, never propagate
+    except (np.linalg.LinAlgError, ValueError, RuntimeError) as exc:
+        # Expected numeric/convergence failures (singular matrices, shape/value
+        # errors out of the backend) degrade to the coarse transform. Programming
+        # errors (TypeError, AttributeError, ...) are deliberately NOT caught so a
+        # systematically broken ICP path fails loudly instead of silently never
+        # refining.
         reg.notes.append(f"ICP failed ({exc}); kept coarse registration")
         return reg
 
