@@ -99,6 +99,37 @@ fixtures not existing yet (Phase 0 bootstrap validates the schemas alone).
 Engine pytest markers (`engine/pyproject.toml`): `unit`, `integration`, `heavy`.
 CI runs `pytest -m "not heavy"`. Heavy native backends and live tests are opt-in.
 
+### 4.1 Heavy registration path (Open3D ICP + real E57)
+
+The optional `[heavy]` backends (Open3D, pye57, OpenCV) drive the fine-registration
+path (`refine_registration` → Open3D ICP) and the E57 loader (`pointcloud._load_e57`
+→ pye57). These deselect from default CI but are exercised end-to-end behind
+`@pytest.mark.heavy` + `pytest.importorskip`, so they SKIP cleanly when the backend
+is absent and run for real when it is present:
+
+| Test module | Proves (heavy, runs only with the backend) |
+|---|---|
+| `test_register_icp_heavy.py` | ICP genuinely runs and pulls an off-by-known-offset coarse transform *toward* truth (PLY/Open3D). |
+| `test_integration_heavy.py` | full `run_pipeline`: posed cloud → ICP → verdict report; asserts ICP improved alignment **and** the residual note reaches `DeviceResult.notes` + the rendered HTML/JSON. |
+| `test_e57_heavy.py` | the production loader reads a **real, committed E57** (`fixtures/scanner/f08_posed_scan.e57`) and applies its pose/scaling (global ≠ local), then drives it end-to-end to a verdict. |
+
+The E57 fixture is a genuine ASTM-E2807 container (not a stub), generated once by
+`engine/tools/make_e57_fixture.py` and committed. E57 containers embed
+GUIDs/timestamps so the bytes are not reproducible; regenerate (needs the `[heavy]`
+extra) only when the geometry contract in that script changes:
+
+```bash
+pip install -e "engine[dev,report,heavy]"   # open3d is gated to python < 3.13
+cd engine && python -m tools.make_e57_fixture
+cd engine && pytest -q                        # heavy tests now run instead of skip
+```
+
+> Install note: the heavy extra pulls native wheels (Open3D drags in a large
+> visualization stack). On a debian-managed system where pip cannot uninstall
+> distro packages, install into a fresh virtualenv. `open3d` is pinned to
+> `python_version < '3.13'`, so on Linux + py3.13 the heavy ICP tests have no
+> backend and silently skip — a real coverage gap, not a guarantee.
+
 ## 5. Pre-commit mirrors CI, per language
 
 `.pre-commit-config.yaml` recreates the CI checks locally:
