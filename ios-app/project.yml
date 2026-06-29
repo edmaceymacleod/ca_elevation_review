@@ -1,0 +1,71 @@
+# XcodeGen project definition for the CA Elevation Review iPhone app.
+#
+# Why this file exists: the SwiftUI/ARKit app (Sources/CaElevationApp) needs a
+# real Xcode *App* target with an Info.plist, privacy usage strings, and device
+# capabilities to build and run on a device. A binary .xcodeproj is unreviewable
+# and cannot be authored on Linux, so we check in this declarative config and
+# regenerate the project from it:
+#
+#     brew install xcodegen      # one time
+#     cd ios-app && xcodegen generate
+#     open CaElevationReview.xcodeproj
+#
+# The pure-logic library stays in Package.swift (CaElevationKit); this app target
+# depends on that local Swift package, so the kit is the single source of the
+# wire models and is still built/tested headlessly in CI.
+name: CaElevationReview
+options:
+  bundleIdPrefix: tech.sterling.caelevationreview
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+packages:
+  CaElevationKit:
+    # Consume the sibling SwiftPM package from this same directory.
+    path: .
+
+targets:
+  CaElevationReview:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources/CaElevationApp
+    dependencies:
+      - package: CaElevationKit
+        product: CaElevationKit
+    settings:
+      base:
+        # Signing is left to Ed's Apple Developer team; set DEVELOPMENT_TEAM
+        # locally (e.g. in a gitignored .xcconfig or Xcode UI) rather than here.
+        PRODUCT_BUNDLE_IDENTIFIER: tech.sterling.caelevationreview
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1"   # iPhone only (LiDAR capture is a phone flow)
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: Sources/CaElevationApp/Info.plist
+      properties:
+        CFBundleDisplayName: CA Elevation Review
+        CFBundleShortVersionString: "0.1.0"
+        UILaunchScreen: {}
+        # --- Privacy usage strings (app crashes on first sensor use without
+        #     these). The camera/ARKit and compass paths both need one. ---
+        NSCameraUsageDescription: >-
+          CA Elevation Review uses the camera and LiDAR to capture site photos and
+          depth for verifying installed devices against the design.
+        NSLocationWhenInUseUsageDescription: >-
+          CA Elevation Review uses your heading to pre-fill the camera direction
+          arrow when you place a capture on the floorplan.
+        # --- Restrict install to ARKit-capable hardware. There is no static
+        #     LiDAR capability key; LiDAR is gated at runtime via
+        #     supportsFrameSemantics(.sceneDepth) in ARCaptureSession. ---
+        UIRequiredDeviceCapabilities:
+          - arkit
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight

@@ -1,0 +1,15 @@
+{
+  "$comment": "XcodeBuildMCP wires Claude Code into the Xcode build/run/test loop for this app (build_sim/test_sim/screenshot/capture_logs, plus device build/install). Add it with: claude mcp add --transport stdio XcodeBuildMCP --scope project -- npx -y xcodebuildmcp@latest . Requires Node/npx on the Mac. The 'device' workflow is enabled because the LiDAR capture path can ONLY be exercised on a real iPhone Pro (the simulator has no LiDAR).",
+  "mcpServers": {
+    "XcodeBuildMCP": {
+      "command": "npx",
+      "args": ["-y", "xcodebuildmcp@latest"],
+      "env": {
+        "INCREMENTAL_BUILDS_ENABLED": "true",
+        "XCODEBUILDMCP_SENTRY_DISABLED": "true",
+        "XCODEBUILDMCP_DYNAMIC_TOOLS": "true",
+        "XCODEBUILDMCP_ENABLED_WORKFLOWS": "simulator,device,project-discovery,swift-package"
+      }
+    }
+  }
+}

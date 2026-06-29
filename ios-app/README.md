@@ -69,23 +69,27 @@ swift build          # builds CaElevationKit
 swift test           # runs the headless XCTest suite
 ```
 
-**The app target (in Xcode, on a Mac):**
+**The app target (in Xcode, on a Mac) — generated from `project.yml`:**
 
-1. `File ▸ New ▸ Project… ▸ iOS ▸ App` (SwiftUI lifecycle). Name it e.g.
-   `CaElevation`.
-2. `File ▸ Add Package Dependencies… ▸ Add Local…` and select this `ios-app`
-   folder so the app target links the **`CaElevationKit`** product.
-3. Add the `Sources/CaElevationApp/` Swift files to the App target (drag them in,
-   or point the target's sources at that folder). Delete the template
-   `ContentView.swift`/`App.swift` — `CaElevationApp.swift` here is the `@main`.
-4. In the target's **Info.plist** add usage strings:
-   - `NSCameraUsageDescription` — capture wall photos.
-   - `NSLocationWhenInUseUsageDescription` — pre-fill the heading arrow from the
-     compass.
-5. Build & run **on a real LiDAR device**.
+The App target is defined declaratively in `project.yml` (XcodeGen) — including
+the Info.plist privacy usage strings (`NSCameraUsageDescription`,
+`NSLocationWhenInUseUsageDescription`), `UIRequiredDeviceCapabilities: [arkit]`,
+the local `CaElevationKit` dependency, and an iOS 17 floor. Generate and open it:
 
-> A future commit can replace step 1–3 with a checked-in `.xcodeproj` /
-> `.xcworkspace`; the source layout above is already structured for it.
+```bash
+brew install xcodegen          # one time
+cd ios-app && xcodegen generate # writes CaElevationReview.xcodeproj
+open CaElevationReview.xcodeproj
+```
+
+Then set your **Apple Developer team** in Signing & Capabilities (locally; not in
+`project.yml`) and build & run **on a real LiDAR device** — the Simulator has no
+camera/LiDAR, so the capture path only works on an iPhone Pro.
+
+> The binary `.xcodeproj` is intentionally not committed (unreviewable, can't be
+> authored headlessly); regenerate it from `project.yml`. See
+> `../docs/ios-mac-silicon-readiness.md` for the full Apple-Silicon checklist and
+> `CLAUDE.md` for the Claude Code build/run loop (XcodeBuildMCP).
 
 ## Bundle round-trip (local-first, no sync server)
 

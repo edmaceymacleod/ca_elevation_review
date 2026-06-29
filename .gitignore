@@ -54,6 +54,8 @@ TestResults/
 .build/
 .swiftpm/
 DerivedData/
+# Generated from ios-app/project.yml via `xcodegen generate` — do not commit.
+ios-app/*.xcodeproj
 *.xcuserstate
 *.xcscmblueprint
 *.xccheckout

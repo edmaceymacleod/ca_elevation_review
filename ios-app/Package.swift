@@ -19,7 +19,10 @@ let package = Package(
     platforms: [
         // iOS is where the app ships; macOS lets the kit build/test on a Mac.
         // The kit itself is pure Foundation and also builds on Linux for CI.
-        .iOS(.v16),
+        // Floor is iOS 17: the app layer uses iOS 17 SwiftUI APIs
+        // (navigationDestination(item:)), and every LiDAR-capable iPhone
+        // (12 Pro and later) runs iOS 17+, so this loses no target hardware.
+        .iOS(.v17),
         .macOS(.v13)
     ],
     products: [
