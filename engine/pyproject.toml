@@ -79,3 +79,12 @@ python_version = "3.10"
 packages = ["ca_elevation_engine"]
 ignore_missing_imports = true
 warn_unused_ignores = true
+
+# numpy>=2.3 ships PEP 695 `type` statements in its bundled stubs, which mypy
+# rejects when type-checking under python_version 3.10 ("Type statement is only
+# supported in Python 3.12 and greater"). We don't type-check numpy itself, so
+# skip following into it (incl. its stubs) — our own annotations are unaffected.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
