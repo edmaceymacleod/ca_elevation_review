@@ -1,7 +1,7 @@
 # CI/dev constraints lock for the engine — DO NOT hand-edit version numbers.
 #
-# Why this exists: `pyproject.toml` deliberately declares dependencies as `>=`
-# floors so `ca-elevation-engine` stays installable alongside other packages.
+# Why this exists: pyproject.toml deliberately declares dependencies as `>=`
+# floors so ca-elevation-engine stays installable alongside other packages.
 # That flexibility makes CI non-deterministic — a fresh upstream release (e.g. a
 # new numpy whose bundled stubs break mypy) can turn CI red with zero code
 # change. This file pins the exact resolved set CI installs, so runs are
@@ -10,38 +10,40 @@
 # Used as a pip constraints file (does not itself install anything):
 #   pip install -c engine/requirements-dev.txt ruff mypy pytest pytest-cov "./engine[report]"
 #
-# Bumped by Dependabot (weekly, see .github/dependabot.yml) in a reviewable PR,
-# so dependency drift is caught on a schedule instead of randomly mid-PR.
-# To regenerate by hand: clean venv -> install the toolchain + ./engine[report]
-# -> `pip freeze` -> drop the editable self-reference.
+# IMPORTANT: built on the OLDEST Python in the CI matrix (3.10). A flat pin set
+# must install on every matrix Python; building on the floor guarantees that
+# (e.g. numpy 2.2.6 spans 3.10–3.13, whereas numpy>=2.3 drops 3.10). Verified
+# to install + pass ruff/mypy/pytest on 3.10, 3.11, and 3.12. The py<3.11
+# backports (tomli, exceptiongroup) are simply ignored by pip on 3.11+.
+#
+# Bumped by Dependabot (weekly, see .github/dependabot.yml) in a reviewable PR.
+# To regenerate: python3.10 -m venv .v && .v/bin/pip install "./engine[report]"
+# ruff mypy pytest pytest-cov && .v/bin/pip freeze, then drop the self-reference.
 
-# --- toolchain (lint / type / test) ---
-ruff==0.9.6
-mypy==2.1.0
-mypy_extensions==1.1.0
-pytest==9.1.1
-pytest-cov==7.1.0
-coverage==7.14.3
-iniconfig==2.3.0
-pluggy==1.6.0
-Pygments==2.20.0
-pathspec==1.1.1
-typing_extensions==4.15.0
-
-# --- engine runtime deps (core + [report] extra) ---
-numpy==2.4.6
-jsonschema==4.26.0
-jsonschema-specifications==2025.9.1
-referencing==0.37.0
-attrs==26.1.0
-rpds-py==2026.5.1
-reportlab==5.0.0
-pillow==12.2.0
 Jinja2==3.1.6
 MarkupSafe==3.0.3
-
-# --- transitive ---
-charset-normalizer==3.4.7
-packaging==26.2
+Pygments==2.20.0
 ast_serialize==0.5.0
+attrs==26.1.0
+charset-normalizer==3.4.7
+coverage==7.14.3
+exceptiongroup==1.3.1
+iniconfig==2.3.0
+jsonschema-specifications==2025.9.1
+jsonschema==4.26.0
 librt==0.11.0
+mypy==2.1.0
+mypy_extensions==1.1.0
+numpy==2.2.6
+packaging==26.2
+pathspec==1.1.1
+pillow==12.2.0
+pluggy==1.6.0
+pytest-cov==7.1.0
+pytest==9.1.1
+referencing==0.37.0
+reportlab==5.0.0
+rpds-py==0.30.0
+ruff==0.9.6
+tomli==2.4.1
+typing_extensions==4.15.0
