@@ -52,7 +52,7 @@ Here that line is hard:
   iOS Simulator has no camera and no LiDAR**, so a real device is required to
   capture. The app degrades to RGB + pose without LiDAR but the engine then
   lacks metric depth for that shot.
-- **Xcode 15+**, **iOS 16+** deployment target (matches `Package.swift`).
+- **Xcode 15+**, **iOS 17+** deployment target (matches `Package.swift` and `project.yml`).
 - An **Apple Developer** signing identity to run on device.
 
 ## Open / build in Xcode

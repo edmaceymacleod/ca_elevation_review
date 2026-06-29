@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using Autodesk.Revit.Attributes;
@@ -38,6 +39,14 @@ namespace CaElevationReview.Addin.Commands
                 string outDir = Path.GetDirectoryName(reportJsonPath)!;
                 string toOpen = ResolveBestReportArtifact(outDir, reportJsonPath);
 
+                // Defence in depth before handing a path to the OS shell handler: only open
+                // known report artifact types, and only from inside the engine output dir.
+                if (!IsAllowedReportArtifact(toOpen, outDir, out string reason))
+                {
+                    message = $"Refusing to open report artifact: {reason}";
+                    return Result.Failed;
+                }
+
                 OpenWithDefaultHandler(toOpen);
                 return Result.Succeeded;
             }
@@ -61,6 +70,48 @@ namespace CaElevationReview.Addin.Commands
             if (File.Exists(pdf)) return pdf;
 
             return jsonFallback;
+        }
+
+        /// <summary>Extensions we will hand to the OS default handler. Pure, unit-testable.</summary>
+        private static readonly HashSet<string> AllowedExtensions =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".pdf", ".html", ".json" };
+
+        /// <summary>
+        /// Gate before shelling out: the artifact must have an allow-listed extension and
+        /// must resolve to a file inside <paramref name="allowedDir"/> (the engine output
+        /// directory). Rejects path-traversal / symlink-style escapes and unknown types.
+        /// Pure (apart from path canonicalisation); exposed for unit testing.
+        /// </summary>
+        public static bool IsAllowedReportArtifact(string path, string allowedDir, out string reason)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                reason = "empty path";
+                return false;
+            }
+
+            string ext = Path.GetExtension(path);
+            if (!AllowedExtensions.Contains(ext))
+            {
+                reason = $"extension '{ext}' is not in the allow-list (.pdf/.html/.json)";
+                return false;
+            }
+
+            // Canonicalise both sides and require the artifact to live under the output dir.
+            string fullPath = Path.GetFullPath(path);
+            string fullDir = Path.GetFullPath(allowedDir);
+            string dirPrefix = fullDir.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
+                ? fullDir
+                : fullDir + Path.DirectorySeparatorChar;
+
+            if (!fullPath.StartsWith(dirPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                reason = $"path is outside the engine output directory ({fullDir})";
+                return false;
+            }
+
+            reason = string.Empty;
+            return true;
         }
 
         private static void OpenWithDefaultHandler(string path)

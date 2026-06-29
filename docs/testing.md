@@ -36,11 +36,12 @@ Rules:
 
 ## 2. Registry as single source of truth + coverage ratchets
 
-A **registry** declares every engine check and every supported device family /
-capture scenario with its contracts. Ratchet tests enforce a *one-way* coverage
-guarantee:
+A **registry** (`engine/src/ca_elevation_engine/registry.py`) declares every
+engine check, every verdict class the engine can emit, and every registered
+capture scenario, each with its contract. Ratchet tests enforce a *one-way*
+coverage guarantee:
 
-- A new check or supported device family must ship **with** a fixture and a golden
+- A new check, verdict, or scenario must ship **with** a fixture and a golden
   case; the ratchet fails otherwise.
 - Coverage only goes up. New smoke-only / waived entries are capped (e.g. at zero
   new un-covered entries) and allowlists are purged of stale entries.

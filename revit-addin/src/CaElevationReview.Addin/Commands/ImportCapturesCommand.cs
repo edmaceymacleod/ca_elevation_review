@@ -55,9 +55,14 @@ namespace CaElevationReview.Addin.Commands
 
                 if (!runResult.Succeeded)
                 {
-                    message =
-                        $"Engine run failed (exit {runResult.ExitCode}).\n\n" +
-                        Truncate(runResult.StdErr, 1500);
+                    // Distinguish "exit 0 but no/unparseable report" (a contract/parse
+                    // problem, surfaced via ReportReadError) from a real nonzero exit.
+                    message = runResult.ExitCode == 0 && runResult.ReportReadError != null
+                        ? $"Engine reported success but no usable report was produced.\n\n" +
+                          $"{runResult.ReportReadError}\n\n" +
+                          Truncate(runResult.StdErr, 1500)
+                        : $"Engine run failed (exit {runResult.ExitCode}).\n\n" +
+                          Truncate(runResult.StdErr, 1500);
                     return Result.Failed;
                 }
 
@@ -127,6 +132,14 @@ namespace CaElevationReview.Addin.Commands
 
             using var tx = new Transaction(doc, "CA Elevation Review: verdict write-back");
             tx.Start();
+
+            // Idempotent re-import: clear ALL previously-applied CA-Elevation overrides
+            // (found by marker, not by the new report's ids) BEFORE applying the new ones,
+            // in the SAME transaction. The new report's ids cannot cover devices dropped
+            // from it, so a marker-based clear is required to remove their stale colours.
+            // See docs/pyrevit-migration-plan.md Section 2.
+            writeback.Clear(doc, view);
+
             int colored = writeback.Apply(doc, view, report);
             tx.Commit();
 

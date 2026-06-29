@@ -69,7 +69,9 @@ public struct Affine: Equatable, Sendable {
         let a = coefficients[0], b = coefficients[1], c = coefficients[2]
         let d = coefficients[3], e = coefficients[4], f = coefficients[5]
         let det = a * e - b * d
-        guard det != 0 else { return nil }
+        // Match the engine (geometry.py model_xy_to_pixel): reject near-singular
+        // affines, not just exactly-zero determinants.
+        guard abs(det) >= 1e-12 else { return nil }
         let dx = x - c
         let dy = y - f
         let px = (e * dx - b * dy) / det

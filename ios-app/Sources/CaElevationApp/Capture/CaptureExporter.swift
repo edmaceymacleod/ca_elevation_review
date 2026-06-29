@@ -89,12 +89,30 @@ enum CaptureExporter {
         return exportDirectory
     }
 
-    /// A per-session export directory under the app's Documents folder.
-    static func sessionExportDirectory() -> URL {
+    /// Create a fresh, isolated export directory for a single capture session.
+    ///
+    /// Returns a unique per-session subdirectory (keyed by a UUID) under the
+    /// shared `CaptureExport` folder, so media staged for one project can never
+    /// leak into another project's export. The subdirectory is removed and
+    /// recreated to guarantee it starts empty even on the (astronomically
+    /// unlikely) event of a UUID collision with stale data.
+    ///
+    /// Callers should make a directory once per session (e.g. when a bundle is
+    /// loaded) and reuse the same URL for every `makeShot` and `exportPackage`
+    /// call in that session, so staged media and the written `capture.json`
+    /// land in the same place.
+    static func makeSessionExportDirectory() throws -> URL {
         let documents = FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
-        // One directory per session; reused across shots within a session.
-        return documents.appendingPathComponent("CaptureExport", isDirectory: true)
+        let root = documents.appendingPathComponent("CaptureExport", isDirectory: true)
+        let session = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
+
+        let fm = FileManager.default
+        if fm.fileExists(atPath: session.path) {
+            try fm.removeItem(at: session)
+        }
+        try fm.createDirectory(at: session, withIntermediateDirectories: true)
+        return session
     }
 
     // MARK: - Device metadata

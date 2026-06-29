@@ -46,6 +46,10 @@ final class CaptureSessionModel: ObservableObject {
     @Published var selectedLevel: Level?
     /// Shots taken so far this session (step 3-4), keyed in capture order.
     @Published var shots: [Shot] = []
+    /// Fresh, isolated staging/export directory for this session. Created when
+    /// a bundle is loaded so each project gets an empty directory and media can
+    /// never leak in from a previously loaded project.
+    @Published private(set) var exportDirectory: URL?
 
     /// Load and decode a field bundle directory (step 1).
     func loadBundle(at directory: URL) throws {
@@ -54,6 +58,8 @@ final class CaptureSessionModel: ObservableObject {
         self.bundleDirectory = directory
         self.selectedLevel = manifest.levels.first
         self.shots = []
+        // Start each session on a clean, unique export directory.
+        self.exportDirectory = try CaptureExporter.makeSessionExportDirectory()
     }
 
     /// Append a finished shot to the session (called after Place-Pin confirm).

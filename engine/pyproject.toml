@@ -56,7 +56,7 @@ Repository = "https://github.com/edmaceymacleod/ca_elevation_review"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ca_elevation_engine = ["schemas/*.json", "report/templates/*.html", "py.typed"]
+ca_elevation_engine = ["schemas/*.json", "py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

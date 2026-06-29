@@ -105,6 +105,20 @@ def build_manifest(
             raise ManifestBuildError(f"duplicate device id: {did!r}")
         seen_ids.add(did)
 
+    seen_basenames = set()
+    seen_level_ids = set()
+    for fp in floorplans:
+        if fp.basename in seen_basenames:
+            raise ManifestBuildError(
+                f"duplicate floorplan basename {fp.basename!r}: each level's image must be a "
+                "distinct relative path (else bundle_io overwrites one and a level "
+                "references the wrong floorplan)"
+            )
+        seen_basenames.add(fp.basename)
+        if fp.level_id in seen_level_ids:
+            raise ManifestBuildError(f"duplicate level id: {fp.level_id!r}")
+        seen_level_ids.add(fp.level_id)
+
     levels = [_level_dict(fp) for fp in floorplans]
     level_ids = {lv["id"] for lv in levels}
     for d in devices:

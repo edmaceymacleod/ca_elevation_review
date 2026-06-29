@@ -53,6 +53,9 @@ def _jsonschema_version() -> str:
 FIXTURE_SUFFIX_TO_SCHEMA = {
     ".manifest.json": "spec_manifest.schema.json",
     ".capture.json": "capture_package.schema.json",
+    # The project's golden reports are named "<stem>_verdict_report.json"; the
+    # plain ".report.json" alias is kept for any future report fixtures.
+    "_verdict_report.json": "verdict_report.schema.json",
     ".report.json": "verdict_report.schema.json",
 }
 
@@ -102,6 +105,8 @@ def validate_fixtures(
     """Validate every recognised fixture under fixtures_dir. Returns (count, errors)."""
     errors: list[str] = []
     checked = 0
+    skipped: list[Path] = []
+    validated_schema_names: set[str] = set()
 
     if not fixtures_dir.exists():
         if verbose:
@@ -114,7 +119,10 @@ def validate_fixtures(
             None,
         )
         if schema_name is None:
-            # Not a recognised payload (could be an asset sidecar); skip quietly.
+            # Not a recognised payload (e.g. an asset sidecar). Don't fail, but
+            # surface it so a misnamed payload (a typo'd manifest/capture/report)
+            # can't escape validation silently.
+            skipped.append(path)
             continue
         schema = schemas.get(schema_name)
         if schema is None:
@@ -134,8 +142,30 @@ def validate_fixtures(
                 errors.append(f"{path} [{loc}]: {err.message}")
         else:
             checked += 1
+            validated_schema_names.add(schema_name)
             if verbose:
                 print(f"  OK fixture: {path.relative_to(fixtures_dir)} against {schema_name}")
+
+    if skipped:
+        rels = ", ".join(str(p.relative_to(fixtures_dir)) for p in skipped)
+        print(
+            f"  NOTE: {len(skipped)} *.json file(s) matched no payload suffix, "
+            f"not validated: {rels}"
+        )
+
+    # Fail loudly if a report fixture exists but the report schema validated none
+    # of them -- catches a future rename quietly dropping the golden from coverage.
+    report_files = [
+        p
+        for p in fixtures_dir.rglob("*.json")
+        if p.name.endswith(("_verdict_report.json", ".report.json"))
+    ]
+    if report_files and "verdict_report.schema.json" not in validated_schema_names:
+        names = [str(p.name) for p in report_files]
+        errors.append(
+            f"found report fixtures {names} but none validated against "
+            "verdict_report.schema.json (suffix-map drift?)"
+        )
 
     return checked, errors
 

@@ -94,9 +94,16 @@ def test_rigid_transform_2d_rotation():
 
 
 def test_heading_of_pose_from_matrix():
-    pose = np.eye(4).flatten().tolist()
-    # No rotation: forward -Z maps to model via identity -> heading along -Z's xy.
+    pose = np.eye(4).flatten().tolist()  # camera forward = -Z
+    # Identity transform: forward (0,0,-1) projects to model xy (0,0) -> atan2(0,0)=0.
+    assert geo.heading_of_pose_deg_from_matrix(np.eye(4), pose) == pytest.approx(0.0)
+
+    # A rotation mapping camera-forward (0,0,-1) -> model +Y must read as heading 90.
     m = np.eye(4)
-    # forward (0,0,-1) rotated by identity -> xy (0,0) -> atan2(0,0)=0
-    h = geo.heading_of_pose_deg_from_matrix(m, pose)
-    assert 0 <= h < 360
+    m[:3, :3] = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]], dtype=float)
+    assert geo.heading_of_pose_deg_from_matrix(m, pose) == pytest.approx(90.0)
+
+    # ...and -> model +X must read as heading 0 (rotation mapping (0,0,-1)->(1,0,0)).
+    m2 = np.eye(4)
+    m2[:3, :3] = np.array([[0, 0, -1], [0, 1, 0], [1, 0, 0]], dtype=float)
+    assert geo.heading_of_pose_deg_from_matrix(m2, pose) == pytest.approx(0.0)

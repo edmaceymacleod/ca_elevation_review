@@ -202,7 +202,10 @@ def project_point(
     pc = world_to_camera(pose_flat, p_world)
     depth = -pc[2]  # camera looks down -Z
     if abs(pc[2]) < 1e-9:
-        return (cx, cy, depth)
+        # Point is on (or within epsilon of) the camera plane: projection is
+        # undefined. Report depth 0.0 so callers' `depth > 0` frustum test treats
+        # it as NOT in view, rather than a spurious visible frame-centre hit.
+        return (cx, cy, 0.0)
     u = fx * (pc[0] / -pc[2]) + cx
     v = fy * (pc[1] / -pc[2]) + cy
     return (u, v, depth)

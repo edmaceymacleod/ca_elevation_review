@@ -12,14 +12,18 @@ import sys
 # but a known 6.0.0 routing defect (#3092) can run a shebanged script under
 # IronPython anyway. Our whole correctness argument assumes CPython >= 3.8, so
 # fail loudly rather than hit silent stdlib/subprocess differences.
-if sys.implementation.name != "cpython" or sys.version_info < (3, 8):
+if (
+    getattr(sys, "implementation", None) is None  # IronPython 2.7 has no sys.implementation
+    or sys.implementation.name != "cpython"
+    or sys.version_info < (3, 8)
+):
     _msg = "CA Elevation Review requires the pyRevit CPython engine (3.8+)."
     try:
         from pyrevit import forms
 
         forms.alert(_msg, exitscript=True)
     except Exception:
-        raise SystemExit(_msg)
+        raise SystemExit(_msg) from None
 
 from pyrevit import forms, revit, script  # noqa: E402
 

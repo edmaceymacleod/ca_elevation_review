@@ -9,8 +9,8 @@
   Update <Assembly> to the absolute path of the built CaElevationReview.Addin.dll
   for the matching Revit year, OR to a path relative to this manifest if you keep
   the DLL alongside it. Pick the TFM that matches the Revit year:
-    Revit 2024/2025 -> net48 build
-    Revit 2026      -> net8.0-windows build
+    Revit 2024           -> net48 build
+    Revit 2025/2026/2027 -> net8.0-windows build  (2025+ runs on .NET 8)
 
   The AddInId GUID below is a placeholder; generate your own once before release
   and keep it stable thereafter (it identifies the add-in to Revit).

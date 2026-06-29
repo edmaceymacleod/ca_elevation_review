@@ -8,8 +8,11 @@ surface small and stable:
     ca-elevation schema   (spec_manifest|capture_package|verdict_report)
 
 ``run`` always writes ``DIR/verdict_report.json`` and (unless ``--format json``)
-a rendered report, then prints a one-screen text summary to stdout. Exit code 0
-on success, 1 on validation/usage error, 2 on unexpected failure.
+a rendered report, then prints a one-screen text summary to stdout.
+
+Exit codes: ``0`` success; ``1`` validation error (a payload failed schema or
+cross-field checks, or a referenced file was missing); ``2`` usage error
+(argparse: bad/missing arguments) or an unexpected internal failure.
 """
 
 from __future__ import annotations

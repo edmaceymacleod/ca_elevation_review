@@ -77,6 +77,10 @@ def run_pipeline(
         engine_version=__version__,
     )
 
+    # Fail-closed on the OUTPUT contract too: validate the emitted report against
+    # verdict_report.schema.json before it is written, symmetric with input ingest.
+    ingest.validate_report(report.to_dict())
+
     written: dict[str, str] = {}
     if out_dir is not None:
         out = Path(out_dir)

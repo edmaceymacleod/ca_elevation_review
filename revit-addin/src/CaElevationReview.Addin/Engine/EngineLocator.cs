@@ -24,14 +24,19 @@ namespace CaElevationReview.Addin.Engine
     /// <summary>
     /// Locates the <c>ca-elevation</c> CLI. Resolution order (first hit wins):
     ///   1. An explicit path passed to the constructor (from add-in settings).
-    ///   2. The CA_ELEVATION_CLI environment variable.
+    ///   2. The CA_ELEVATION_ENGINE environment variable (canonical), or the
+    ///      deprecated CA_ELEVATION_CLI alias as a fallback.
     ///   3. A venv bundled next to the add-in DLL (./engine-venv/Scripts/...).
     ///   4. The bare "ca-elevation" console script on PATH.
     /// Pure logic apart from file-existence probing, which is injectable for tests.
     /// </summary>
     public sealed class EngineLocator
     {
-        public const string EnvVarName = "CA_ELEVATION_CLI";
+        // CA_ELEVATION_ENGINE is the canonical env var across the project (engine
+        // config.py, the pyRevit port). CA_ELEVATION_CLI is a deprecated alias kept
+        // for backward compatibility and checked only if the canonical one is unset.
+        public const string EnvVarName = "CA_ELEVATION_ENGINE";
+        public const string DeprecatedEnvVarName = "CA_ELEVATION_CLI";
         private const string ConsoleScript = "ca-elevation";
 
         private readonly string? _explicitPath;
@@ -70,13 +75,25 @@ namespace CaElevationReview.Addin.Engine
                     $"Configured engine path does not exist: {_explicitPath}");
             }
 
-            // 2. Environment variable.
+            // 2. Environment variable: prefer the canonical CA_ELEVATION_ENGINE,
+            //    then fall back to the deprecated CA_ELEVATION_CLI alias.
+            string usedEnvVar = EnvVarName;
             string? fromEnv = _envReader(EnvVarName);
+            if (string.IsNullOrWhiteSpace(fromEnv))
+            {
+                string? fromDeprecated = _envReader(DeprecatedEnvVarName);
+                if (!string.IsNullOrWhiteSpace(fromDeprecated))
+                {
+                    fromEnv = fromDeprecated;
+                    usedEnvVar = DeprecatedEnvVarName;
+                }
+            }
+
             if (!string.IsNullOrWhiteSpace(fromEnv))
             {
                 if (_fileExists(fromEnv!)) return Wrap(fromEnv!);
                 throw new EngineNotFoundException(
-                    $"{EnvVarName} points at a missing file: {fromEnv}");
+                    $"{usedEnvVar} points at a missing file: {fromEnv}");
             }
 
             // 3. Bundled venv next to the add-in (Windows layout).

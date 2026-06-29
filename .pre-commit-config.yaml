@@ -31,7 +31,10 @@ repos:
 
   # ---- Python: ruff lint + format, scoped to engine/ ---------------------
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    # >=0.9: the pyrevit lib config references UP045 (added in ruff 0.9); older
+    # ruff aborts with "Unknown rule selector". Engine code is already clean
+    # under modern ruff.
+    rev: v0.9.6
     hooks:
       - id: ruff
         name: ruff (lint, engine)

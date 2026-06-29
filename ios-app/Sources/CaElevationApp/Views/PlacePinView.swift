@@ -167,15 +167,19 @@ struct PlacePinView: View {
             heading: heading,
             confidence: confidence
         )
+        guard let exportDirectory = session.exportDirectory else {
+            assertionFailure("no export directory; bundle not loaded")
+            return
+        }
         do {
             // CaptureExporter turns ARKit frame + pin into a Kit `Shot`, staging
-            // RGB + depth media into the export directory.
+            // RGB + depth media into the session's export directory.
             let shot = try CaptureExporter.makeShot(
                 from: frame,
                 level: level,
                 elevationId: elevationId,
                 pin: pin,
-                exportDirectory: CaptureExporter.sessionExportDirectory()
+                exportDirectory: exportDirectory
             )
             session.add(shot)
             dismiss()

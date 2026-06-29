@@ -23,6 +23,7 @@
       "type": "object",
       "required": ["id", "level_id", "rgb_image", "intrinsics", "pose", "pin"],
       "additionalProperties": false,
+      "dependencies": { "depth_map": ["depth_size"] },
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "level_id": { "type": "string" },

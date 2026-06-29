@@ -85,8 +85,14 @@ def _fmt_delta(value: float | None, units: str | None, *, angular: bool = False)
     if angular:
         return f"{value:.1f}&deg;"
     suffix = ""
-    if units:
-        suffix = "&nbsp;ft" if units == "feet" else ("&nbsp;m" if units == "meters" else "")
+    if units == "feet":
+        suffix = "&nbsp;ft"
+    elif units == "meters":
+        suffix = "&nbsp;m"
+    elif units:
+        # Unknown but non-empty units: show the raw value rather than silently
+        # dropping it, so a vocabulary change is visible instead of misleading.
+        suffix = "&nbsp;" + escape(units)
     return f"{value:.3f}{suffix}"
 
 

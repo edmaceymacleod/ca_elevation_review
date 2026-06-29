@@ -19,6 +19,16 @@ namespace CaElevationReview.Addin.Verdict
     /// </summary>
     public sealed class VerdictWriteback
     {
+        /// <summary>
+        /// Name of the CA-Elevation marker stamped on every element we override, so a
+        /// later re-import can find and reset previously-coloured elements WITHOUT a
+        /// persisted prior-override store. Per docs/pyrevit-migration-plan.md Section 2
+        /// the model itself is the record: the marker is the only thing that can cover
+        /// devices dropped from the new report (the new report's ids cannot, by definition).
+        /// Concretely this is a project/shared parameter flag (or a named element set).
+        /// </summary>
+        public const string MarkerParameterName = "CA_Elevation_Override";
+
         // RGB legend, shared with the report renderer so model + report agree.
         private static readonly IReadOnlyDictionary<VerdictKind, (byte R, byte G, byte B)> Legend =
             new Dictionary<VerdictKind, (byte, byte, byte)>
@@ -73,6 +83,11 @@ namespace CaElevationReview.Addin.Verdict
             //   Approximate results (no metric LiDAR / occluded) should be visually
             //   distinguished, e.g. a halftone override:
             //   if (result.Approximate) ogs.SetHalftone(true);
+            //
+            //   STAMP THE MARKER so Clear() can find this element on a later re-import,
+            //   even if it is dropped from the next report (see Clear / Section 2):
+            //   Parameter marker = element.LookupParameter(MarkerParameterName);
+            //   marker?.Set(1);
             _ = doc;
             _ = view;
             _ = (r, g, b);
@@ -80,15 +95,37 @@ namespace CaElevationReview.Addin.Verdict
         }
 
         /// <summary>
-        /// Clears any CA Elevation Review overrides previously applied in the view, so a
-        /// re-import starts clean. Stubbed.
+        /// Clears CA Elevation Review overrides previously applied in the view so a
+        /// re-import starts clean, including on devices dropped from the new report.
+        ///
+        /// Marker-based idempotency (docs/pyrevit-migration-plan.md Section 2): we do NOT
+        /// clear by the new report's device ids — that set, by definition, cannot contain a
+        /// device dropped from the new report, so stale colours would survive. Instead we
+        /// enumerate every element in the view carrying the CA-Elevation marker
+        /// (<see cref="MarkerParameterName"/>), reset its overrides, and clear the marker.
+        /// Must be called inside the SAME transaction as the subsequent Apply.
         /// </summary>
-        public void Clear(Document doc, View view, IEnumerable<string> deviceIds)
+        /// <returns>Number of previously-marked elements reset.</returns>
+        public int Clear(Document doc, View view)
         {
-            // TODO (Revit): for each device id, view.SetElementOverrides(id, new OverrideGraphicSettings()).
+            // TODO (Revit): enumerate previously-marked elements and reset them. The marker
+            // (not the new report's ids) is what lets this cover dropped devices.
+            //   var empty = new OverrideGraphicSettings();
+            //   var collector = new FilteredElementCollector(doc, view.Id)
+            //       .WhereElementIsNotElementType();
+            //   int reset = 0;
+            //   foreach (Element element in collector)
+            //   {
+            //       Parameter marker = element.LookupParameter(MarkerParameterName);
+            //       if (marker == null || marker.AsInteger() != 1) continue;
+            //       view.SetElementOverrides(element.Id, empty); // reset to view default
+            //       marker.Set(0);                               // clear the marker
+            //       reset++;
+            //   }
+            //   return reset;
             _ = doc;
             _ = view;
-            _ = deviceIds;
+            return 0;
         }
     }
 }

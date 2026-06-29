@@ -105,11 +105,15 @@ struct CoverageView: View {
     // MARK: - Actions
 
     private func exportPackage() {
+        guard let exportDirectory = session.exportDirectory else {
+            exportError = "No export directory; load a bundle first."
+            return
+        }
         do {
             let url = try CaptureExporter.exportPackage(
                 shots: session.shots,
                 projectId: session.manifest?.project.id ?? "unknown",
-                exportDirectory: CaptureExporter.sessionExportDirectory()
+                exportDirectory: exportDirectory
             )
             exportedPackageURL = url
             isSharing = true

@@ -245,7 +245,8 @@ package directory** — never add a generically-named top-level module to `lib/`
 fixtures (`engine/fixtures/synthetic/f01_office.{manifest,capture}.json`) by a
 **repo-relative path** — *not* `importlib.resources`: pip-installing the engine
 does **not** install `engine/fixtures/` (they are outside the package, not in
-`package-data`, which only ships `schemas/`, `report/templates/`, `py.typed`).
+`package-data`, which ships only `schemas/` and `py.typed` — the report renderer
+is pure-Python string templating and ships no templates dir).
 The test invokes `ca-elevation run` over them and asserts `verdict_report.json`
 parses.
 

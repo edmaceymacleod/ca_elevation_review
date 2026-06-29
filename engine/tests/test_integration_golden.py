@@ -19,9 +19,15 @@ GENERATED_AT = "2026-06-28T00:00:00Z"
 
 
 def test_pipeline_reproduces_golden(f01_manifest_path, f01_capture_path, f01_golden):
+    import ca_elevation_engine
+
     result = run_pipeline(f01_manifest_path, f01_capture_path, generated_at=GENERATED_AT)
     produced = result.report.to_dict()
-    # engine_version is environment-derived; compare everything else exactly.
+    # engine_version is stamped from the package version, not the golden; assert it
+    # is present and correct (catches a None/empty regression) THEN drop it before
+    # comparing the rest exactly.
+    assert produced.get("engine_version") == ca_elevation_engine.__version__
+    assert produced["engine_version"]  # non-empty
     produced.pop("engine_version", None)
     golden = dict(f01_golden)
     golden.pop("engine_version", None)

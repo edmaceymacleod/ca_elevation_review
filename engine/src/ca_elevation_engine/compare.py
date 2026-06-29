@@ -140,16 +140,35 @@ def match_device(
     match = Match(device=device, covered_by=coverage)
 
     tol = manifest.effective_tolerances(device)
-    pos_tol = tol.position or GATE_ABS_FLOOR
+    # Explicit None check: an explicit position tolerance of 0.0 must not be
+    # silently replaced by the floor (truthy `or` would swallow it).
+    pos_tol = tol.position if tol.position is not None else GATE_ABS_FLOOR
     gate = max(pos_tol * GATE_TOLERANCE_MULT, GATE_ABS_FLOOR)
 
     candidates = _candidate_observations(device, capture, coverage)
     expected = device.position.as_tuple()
 
+    # Among in-gate candidates, prefer a type-AGREEING (or type-unknown)
+    # observation over a closer wrong-type one, then break ties by distance --
+    # so a nearby decoy of the wrong type can't mask the correct device. Imported
+    # function-locally to avoid a compare<->verdict import cycle.
+    from .verdict import TYPE_MISMATCH_MIN_CONFIDENCE, _types_disagree
+
     best: tuple[str, Observation, float] | None = None
+    best_key: tuple[bool, float] | None = None
     for shot_id, obs in candidates:
         d = geo.distance3(expected, obs.position.as_tuple())
-        if d <= gate and (best is None or d < best[2]):
+        if d > gate:
+            continue
+        disagrees = bool(
+            obs.detected_type
+            and obs.type_confidence is not None
+            and obs.type_confidence >= TYPE_MISMATCH_MIN_CONFIDENCE
+            and _types_disagree(device.type, obs.detected_type)
+        )
+        key = (disagrees, d)  # False (agrees/unknown) sorts before True
+        if best_key is None or key < best_key:
+            best_key = key
             best = (shot_id, obs, d)
 
     if best is None:

@@ -39,6 +39,15 @@ final class AffineTests: XCTestCase {
         XCTAssertNil(singular.pixel(fromModelX: 1, 1))
     }
 
+    func testNearSingularAffineHasNoInverse() {
+        // det = 1e-13, which is below the engine's 1e-12 threshold even though
+        // it is not exactly zero. Mirrors geometry.py model_xy_to_pixel.
+        let nearSingular = Affine(a: 1e-13, b: 0, c: 0, d: 0, e: 1, f: 0)
+        XCTAssertNotEqual(nearSingular.determinant, 0)
+        XCTAssertLessThan(abs(nearSingular.determinant), 1e-12)
+        XCTAssertNil(nearSingular.pixel(fromModelX: 1, 1))
+    }
+
     func testMapFromPin() {
         let affine = Affine(a: 2, b: 0, c: 0, d: 0, e: 2, f: 0)
         let pin = Pin(x: 3, y: 4, heading: 90)

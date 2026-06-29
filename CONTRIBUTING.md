@@ -120,12 +120,13 @@ Fixture filename convention (so the validator can route them):
 
 ## Registry + coverage ratchet (design principle #2)
 
-A registry is the single source of truth for what the engine supports -- every
-verification check and supported device family/scenario is declared there with
-its contracts. Ratchet tests enforce a **one-way** coverage guarantee:
+A registry (`engine/src/ca_elevation_engine/registry.py`) is the single source of
+truth for what the engine supports -- every verification check, every verdict
+class, and every registered capture scenario is declared there with its
+contract. Ratchet tests enforce a **one-way** coverage guarantee:
 
-- A new check or supported device family must ship **with** fixture coverage and
-  a golden case; the ratchet test fails if it does not.
+- A new check, verdict, or scenario must ship **with** fixture coverage and a
+  golden case; the ratchet test fails if it does not.
 - Coverage may only go up. New "smoke-only" or waived entries are capped (e.g.
   at zero new un-covered entries) and allowlists are purged of stale entries.
 

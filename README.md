@@ -27,9 +27,9 @@ That is what this repo builds.
 
 ```
 +--------------------+        local file        +-----------------------+
-|  iPhone capture    |  ----- field bundle --->  |  Revit C# add-in      |
-|  app (Swift/ARKit) |  <---- capture pkg ------  |  (.NET, Windows)      |
-|  ios-app/          |                            |  revit-addin/         |
+|  iPhone capture    |  ----- field bundle --->  |  pyRevit extension    |
+|  app (Swift/ARKit) |  <---- capture pkg ------  |  (Python, Windows)    |
+|  ios-app/          |                            |  pyrevit-extension/   |
 +--------------------+                            +-----------+-----------+
                                                               | invokes (out-of-process)
                                                               v
@@ -45,11 +45,18 @@ That is what this repo builds.
   compares each expected device against reality, emits verdicts + a report.
   pip-installable and headlessly testable; heavy native backends are optional
   extras loaded lazily. Build target: **Linux**.
-- **`revit-addin/`** -- C# .NET add-in. The desktop front door: extracts the spec
-  manifest from the live model, exports floorplans, invokes the engine
-  out-of-process, writes verdicts back into the model, opens the report. Build
-  target: **Windows**. Supported Revit years: **2024-2027** (2024 on `net48`;
-  2025/2026/2027 on `net8.0-windows`).
+- **`pyrevit-extension/`** -- the Revit front door, written in Python and run by
+  pyRevit's CPython runtime. It extracts the spec manifest from the live model,
+  exports floorplans, invokes the engine out-of-process, writes verdicts back into
+  the model, and opens the report. Moving the front door off C# turns the
+  manifest-assembly / bundle-IO / engine-invocation / verdict-mapping logic into
+  real, CI-tested CPython that reuses the engine's own models and schemas; the
+  live Revit-API-touching pieces stay validated on hardware. Build target:
+  **Windows**. See [`docs/pyrevit-migration-plan.md`](docs/pyrevit-migration-plan.md).
+- **`revit-addin/`** -- the original C# .NET add-in front door, now **retained
+  legacy**: kept one cycle, CI-gated off, pending live validation of the pyRevit
+  extension. Build target: **Windows**. Supported Revit years: **2024-2027** (2024
+  on `net48`; 2025/2026/2027 on `net8.0-windows`).
 - **`ios-app/`** -- Swift / SwiftUI / ARKit field client + the pure
   `CaElevationKit` SwiftPM library. Deliberately thin: pin a location + heading,
   capture RGB + LiDAR depth + ARKit pose, package, export. No analysis logic.
@@ -62,11 +69,11 @@ makes it unit-testable with no live Revit session and no device:
 
 | Payload | Produced by | Contents |
 |---|---|---|
-| **Spec manifest** | Revit add-in | expected devices (id, family/type, position, mounting height, orientation, tolerances), levels, floorplans + the plan-pixel-to-model affine |
+| **Spec manifest** | Revit front door | expected devices (id, family/type, position, mounting height, orientation, tolerances), levels, floorplans + the plan-pixel-to-model affine |
 | **Capture package** | iPhone app | per shot: RGB, depth/point-cloud, ARKit intrinsics + pose, and the operator's floorplan pin (x,y) + heading |
 
-The engine emits a third payload, the **verdict report**, consumed by the add-in
-for write-back and by the report renderer. All three are defined by JSON Schema
+The engine emits a third payload, the **verdict report**, consumed by the Revit
+front door for write-back and by the report renderer. All three are defined by JSON Schema
 under [`engine/src/ca_elevation_engine/schemas/`](engine/src/ca_elevation_engine/schemas/)
 and documented in [`docs/schemas.md`](docs/schemas.md).
 
@@ -137,8 +144,12 @@ trustworthy before more effort rides on it.
 - **Phase 0 -- Engine + fixtures + CI** -- *in progress.* Prove the CPython engine
   emits verdicts worth staking a report on, fed by off-the-shelf scanner exports
   (SiteScape / Polycam E57 + posed images). No custom app, no add-in needed.
-- **Phase 1 -- Revit C# add-in** -- *planned.* Manifest extraction, floorplan /
-  bundle export, engine invocation, verdict write-back, report generation.
+- **Phase 1 -- Revit front door (pyRevit extension)** -- *planned.* Manifest
+  extraction, floorplan / bundle export, engine invocation, verdict write-back,
+  report generation, built as a pyRevit CPython extension
+  ([`docs/pyrevit-migration-plan.md`](docs/pyrevit-migration-plan.md)). The
+  original C# add-in (`revit-addin/`) is retained legacy, CI-gated off, pending
+  live validation.
 - **Phase 2 -- iPhone capture app** -- *planned.* Pin + heading + depth + pose
   capture, bundle round-trip. Removes the last friction and delivers the
   integrated product.
@@ -149,6 +160,7 @@ trustworthy before more effort rides on it.
 
 - [`docs/design.md`](docs/design.md) -- the product + architecture design sketch (source of intent).
 - [`docs/architecture.md`](docs/architecture.md) -- the three components, the seam, the payloads, the pipeline.
+- [`docs/pyrevit-migration-plan.md`](docs/pyrevit-migration-plan.md) -- the front-door pivot from the C# add-in to the pyRevit extension, with rationale and file layout.
 - [`docs/testing.md`](docs/testing.md) -- the tiered testing model and fixture / registry / ratchet discipline.
 - [`docs/schemas.md`](docs/schemas.md) -- the three payload schemas, field by field, and the affine / pose conventions.
 

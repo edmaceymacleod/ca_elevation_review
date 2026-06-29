@@ -45,11 +45,20 @@ def write_field_bundle(
         json.dump(manifest, fh, indent=2)
     written["manifest"] = manifest_path
 
+    base = os.path.abspath(out_dir)
     images: List[str] = []
     for fp in floorplans:
-        # basename is a relative path; guard against escaping out_dir.
-        dest = os.path.normpath(os.path.join(out_dir, fp.basename))
-        if os.path.relpath(dest, out_dir).startswith(os.pardir):
+        # basename is a relative path; guard against escaping out_dir. Reject
+        # absolute paths and any traversal that lands outside the bundle dir
+        # (commonpath is the sound containment check; startswith(os.pardir) is not).
+        if os.path.isabs(fp.basename):
+            raise ValueError(f"floorplan basename must be relative: {fp.basename!r}")
+        dest = os.path.normpath(os.path.join(base, fp.basename))
+        try:
+            contained = os.path.commonpath([base, dest]) == base
+        except ValueError:  # different drives on Windows
+            contained = False
+        if not contained:
             raise ValueError(f"floorplan basename escapes the bundle dir: {fp.basename!r}")
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         with open(dest, "wb") as fh:

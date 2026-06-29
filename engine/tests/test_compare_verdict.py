@@ -82,3 +82,69 @@ def test_no_observations_all_absent(f01_manifest_path, f01_capture_path):
     regs = register_capture(manifest, capture)
     results = classify_all(match_all(manifest, capture, regs), manifest)
     assert all(r.verdict is Verdict.ABSENT for r in results)
+
+
+# --- classify-level TYPE_MISMATCH boundary cases (no fixtures) -------------- #
+def _classify_with_observation(expected_type, detected_type, type_confidence):
+    """Classify one device whose single observation sits exactly on it."""
+    from ca_elevation_engine.compare import Match
+    from ca_elevation_engine.models import (
+        Device,
+        Observation,
+        Point3,
+        Project,
+        SpecManifest,
+        Tolerances,
+    )
+    from ca_elevation_engine.verdict import classify
+
+    device = Device(
+        id="d1",
+        family="Access",
+        type=expected_type,
+        level_id="L1",
+        position=Point3(0.0, 0.0, 4.0),
+        mounting_height=4.0,
+    )
+    manifest = SpecManifest(
+        schema_version="1.0.0",
+        project=Project(id="p", name="P", units="feet"),
+        levels=[],
+        devices=[device],
+        default_tolerances=Tolerances(position=0.083, mounting_height=0.042, orientation=10.0),
+    )
+    obs = Observation(
+        position=Point3(0.0, 0.0, 4.0),
+        mounting_height=4.0,
+        facing_angle=0.0,
+        detected_type=detected_type,
+        type_confidence=type_confidence,
+    )
+    match = Match(
+        device=device,
+        observation=obs,
+        matched_shot_id="S1",
+        position_delta=0.0,
+        height_delta=0.0,
+        orientation_delta=0.0,
+    )
+    return classify(match, manifest)
+
+
+def test_substring_type_agreement_is_pass_not_mismatch():
+    # "reader" is a substring of "Card Reader" -> agreement, confident -> PASS + confirmed.
+    r = _classify_with_observation("Card Reader", "reader", 0.7)
+    assert r.verdict is Verdict.PASS
+    assert r.identity_confirmed is True
+
+
+def test_disagreeing_type_below_confidence_is_not_mismatch():
+    # Disagrees, but type_confidence 0.4 < 0.6 threshold -> identity stays human-confirmable.
+    r = _classify_with_observation("Card Reader", "Exit Sign", 0.4)
+    assert r.verdict is Verdict.PASS
+    assert r.identity_confirmed is False
+
+
+def test_disagreeing_type_above_confidence_is_mismatch():
+    r = _classify_with_observation("Card Reader", "Exit Sign", 0.9)
+    assert r.verdict is Verdict.TYPE_MISMATCH

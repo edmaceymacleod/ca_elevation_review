@@ -107,7 +107,8 @@ progress UI), and parses the resulting `verdict_report.json`.
 CLI in this order:
 
 1. An explicit path from add-in settings.
-2. The `CA_ELEVATION_CLI` environment variable.
+2. The `CA_ELEVATION_ENGINE` environment variable (canonical; the legacy
+   `CA_ELEVATION_CLI` name is still accepted as a deprecated alias).
 3. A venv bundled next to the add-in DLL (`./engine-venv/Scripts/...`).
 4. The bare `ca-elevation` console script on `PATH`.
 

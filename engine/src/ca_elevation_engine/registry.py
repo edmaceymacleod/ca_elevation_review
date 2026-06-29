@@ -54,8 +54,14 @@ VERDICTS: tuple[Verdict, ...] = (
     Verdict.TYPE_MISMATCH,
 )
 
-# Registered capture scenarios (fixtures). Each must have a seeder and a golden.
-SCENARIOS: tuple[str, ...] = ("f01_synthetic_office",)
+# Registered capture scenarios (fixtures). Each maps to its seeder
+# (fixtures/seeders/<name>.py) and its golden report (fixtures/golden/<golden>),
+# bound explicitly because the two names are not derivable from each other. The
+# ratchet test asserts both files exist for every scenario.
+SCENARIO_GOLDENS: dict[str, str] = {
+    "f01_synthetic_office": "f01_verdict_report.json",
+}
+SCENARIOS: tuple[str, ...] = tuple(SCENARIO_GOLDENS)
 
 
 def v1_checks() -> tuple[Check, ...]:

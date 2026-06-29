@@ -185,7 +185,7 @@ def render_pdf(
                 Paragraph(_esc(r.device_id), cell),
                 Paragraph(_esc(fam_type), cell),
                 Paragraph(f"<b><font color='{hexcol}'>{label}</font></b>", cell),
-                Paragraph(f"{r.confidence:.0%}", cell),
+                Paragraph(f"{max(0.0, min(1.0, r.confidence)):.0%}", cell),
                 Paragraph(_fmt_delta(r.deltas.position, suffix) + approx, cell),
                 Paragraph(_fmt_delta(r.deltas.mounting_height, suffix), cell),
                 Paragraph(

@@ -48,6 +48,19 @@ namespace CaElevationReview.Addin.Engine
         /// <summary>Parsed report; null if the run failed or the file was absent/unparseable.</summary>
         public VerdictReport? Report { get; set; }
 
+        /// <summary>
+        /// Set when the process exited 0 but the report could not be read/parsed
+        /// (missing file or malformed JSON). Lets callers distinguish "exit 0 but no
+        /// usable report" from a genuine nonzero exit. Null when no such problem occurred.
+        /// </summary>
+        public string? ReportReadError { get; set; }
+
+        /// <summary>
+        /// The exception captured while reading/parsing the report on a clean exit, if any.
+        /// Carried separately from <see cref="ReportReadError"/> for diagnostics/logging.
+        /// </summary>
+        public Exception? ReportReadException { get; set; }
+
         public bool Succeeded => ExitCode == 0 && Report != null;
     }
 
@@ -190,10 +203,32 @@ namespace CaElevationReview.Addin.Engine
                 ReportPath = Path.Combine(request.OutputDir, ReportFileName),
             };
 
-            if (result.ExitCode == 0 && File.Exists(result.ReportPath))
+            // On a clean exit the engine is contracted to have written verdict_report.json.
+            // If it is missing or unparseable we must NOT silently treat that as a quiet
+            // non-success: capture the failure so the caller can distinguish "exit 0 but no
+            // usable report" (a contract/parse problem) from a real nonzero exit.
+            if (result.ExitCode == 0)
             {
-                string json = File.ReadAllText(result.ReportPath);
-                result.Report = VerdictReport.FromJson(json);
+                if (!File.Exists(result.ReportPath))
+                {
+                    result.ReportReadError =
+                        $"Engine exited 0 but no report was found at {result.ReportPath}.";
+                }
+                else
+                {
+                    try
+                    {
+                        string json = File.ReadAllText(result.ReportPath);
+                        result.Report = VerdictReport.FromJson(json);
+                    }
+                    catch (Exception ex)
+                    {
+                        result.ReportReadException = ex;
+                        result.ReportReadError =
+                            $"Engine exited 0 but the report at {result.ReportPath} could not be " +
+                            $"read or parsed: {ex.Message}";
+                    }
+                }
             }
 
             return result;
@@ -232,7 +267,7 @@ namespace CaElevationReview.Addin.Engine
         /// Await process exit cooperatively. (net48 lacks Process.WaitForExitAsync, so
         /// we bridge the Exited event to a TaskCompletionSource.)
         /// </summary>
-        private static Task WaitForExitAsync(Process process, CancellationToken cancellation)
+        private static async Task WaitForExitAsync(Process process, CancellationToken cancellation)
         {
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             process.Exited += (_, _) => tcs.TrySetResult(true);
@@ -240,11 +275,62 @@ namespace CaElevationReview.Addin.Engine
             // Cover the race where the process exited before the handler was attached.
             if (process.HasExited) tcs.TrySetResult(true);
 
-            cancellation.Register(() => tcs.TrySetCanceled(cancellation));
-            return tcs.Task;
+            // Wake this await on cancellation so the caller doesn't block on a process the
+            // RunAsync-registered callback is killing. Dispose the registration when the
+            // await completes so it never outlives this method (the previous code leaked it,
+            // and it duplicated the kill registration in RunAsync — RunAsync owns the kill).
+            using (cancellation.Register(() => tcs.TrySetCanceled(cancellation)))
+            {
+                await tcs.Task.ConfigureAwait(false);
+            }
         }
 
+        /// <summary>
+        /// Quote a single argument for faithful, copy-pasteable display. Quotes any arg
+        /// containing whitespace, an embedded quote, or other shell-significant characters,
+        /// and escapes embedded quotes/backslashes using Windows command-line (CommandLineToArgvW)
+        /// rules: a run of backslashes preceding a quote (or the closing quote) is doubled, and
+        /// each literal quote is escaped as <c>\"</c>. An empty arg renders as <c>""</c>.
+        /// </summary>
         private static string Quote(string value)
-            => value.IndexOf(' ') >= 0 ? "\"" + value + "\"" : value;
+        {
+            if (value.Length > 0 && value.IndexOfAny(QuoteTriggers) < 0)
+            {
+                return value;
+            }
+
+            var sb = new StringBuilder();
+            sb.Append('"');
+            int backslashes = 0;
+            foreach (char c in value)
+            {
+                if (c == '\\')
+                {
+                    backslashes++;
+                    continue;
+                }
+
+                if (c == '"')
+                {
+                    // Double the pending backslashes, then escape this quote.
+                    sb.Append('\\', backslashes * 2 + 1);
+                    sb.Append('"');
+                    backslashes = 0;
+                    continue;
+                }
+
+                sb.Append('\\', backslashes);
+                backslashes = 0;
+                sb.Append(c);
+            }
+
+            // Double any trailing backslashes so they don't escape the closing quote.
+            sb.Append('\\', backslashes * 2);
+            sb.Append('"');
+            return sb.ToString();
+        }
+
+        private static readonly char[] QuoteTriggers =
+            { ' ', '\t', '\n', '\v', '"', '&', '|', '<', '>', '^', '%', '(', ')' };
     }
 }

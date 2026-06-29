@@ -27,12 +27,12 @@ def test_registry_verdicts_match_enum():
 
 
 def test_every_scenario_has_seeder_and_golden():
-    for scenario in registry.SCENARIOS:
+    for scenario, golden in registry.SCENARIO_GOLDENS.items():
         seeder = FIXTURES / "seeders" / f"{scenario}.py"
         assert seeder.exists(), f"scenario {scenario} missing seeder {seeder}"
-    # At least one golden report exists per registered scenario set.
-    goldens = list((FIXTURES / "golden").glob("*_verdict_report.json"))
-    assert goldens, "no golden reports found"
+        # Each scenario is bound to its OWN golden report (not just "some golden").
+        golden_path = FIXTURES / "golden" / golden
+        assert golden_path.exists(), f"scenario {scenario} missing golden {golden_path}"
 
 
 def test_golden_demonstrates_every_verdict_class(f01_golden):

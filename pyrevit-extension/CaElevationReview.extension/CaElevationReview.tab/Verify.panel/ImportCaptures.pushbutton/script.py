@@ -10,14 +10,18 @@ import os
 import sys
 import tempfile
 
-if sys.implementation.name != "cpython" or sys.version_info < (3, 8):
+if (
+    getattr(sys, "implementation", None) is None  # IronPython 2.7 has no sys.implementation
+    or sys.implementation.name != "cpython"
+    or sys.version_info < (3, 8)
+):
     _msg = "CA Elevation Review requires the pyRevit CPython engine (3.8+)."
     try:
         from pyrevit import forms
 
         forms.alert(_msg, exitscript=True)
     except Exception:
-        raise SystemExit(_msg)
+        raise SystemExit(_msg) from None
 
 from pyrevit import forms, revit, script  # noqa: E402
 
@@ -51,16 +55,18 @@ def main():
         )
         return
 
-    # PURE: decide colours; LIVE: apply them idempotently inside a transaction.
-    overrides = writeback.overrides_for_report(result.report or {})
-    applied = revit_writeback.apply_verdicts(doc, revit.active_view, overrides)
-
+    # Stash the report path BEFORE the LIVE write-back, so Open Report works even
+    # if apply_verdicts fails on Ed's hardware (the engine already succeeded).
     if result.report_path:
         try:
             with open(LAST_REPORT_STASH, "w", encoding="utf-8") as fh:
                 fh.write(result.report_path)
         except OSError:
             logger.warning("could not stash report path")
+
+    # PURE: decide colours; LIVE: apply them idempotently inside a transaction.
+    overrides = writeback.overrides_for_report(result.report or {})
+    applied = revit_writeback.apply_verdicts(doc, revit.active_view, overrides)
 
     summary = (result.report or {}).get("summary", {})
     forms.alert(

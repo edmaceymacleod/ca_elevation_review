@@ -114,6 +114,63 @@ final class FieldBundleTests: XCTestCase {
         }
     }
 
+    func testResolvedURLRejectsParentTraversal() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        XCTAssertThrowsError(
+            try BundleIO.resolvedURL(forRelativePath: "../escape.png", in: dir)
+        ) { error in
+            guard case BundleIOError.pathEscapesBundle(let path) = error else {
+                return XCTFail("expected pathEscapesBundle, got \(error)")
+            }
+            XCTAssertEqual(path, "../escape.png")
+        }
+
+        XCTAssertThrowsError(
+            try BundleIO.resolvedURL(forRelativePath: "plans/../../secret.png", in: dir)
+        ) { error in
+            guard case BundleIOError.pathEscapesBundle = error else {
+                return XCTFail("expected pathEscapesBundle, got \(error)")
+            }
+        }
+    }
+
+    func testResolvedURLRejectsAbsolutePath() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        XCTAssertThrowsError(
+            try BundleIO.resolvedURL(forRelativePath: "/etc/passwd", in: dir)
+        ) { error in
+            guard case BundleIOError.pathEscapesBundle = error else {
+                return XCTFail("expected pathEscapesBundle, got \(error)")
+            }
+        }
+    }
+
+    func testResolvedURLAllowsContainedPath() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let url = try BundleIO.resolvedURL(forRelativePath: "plans/L1.png", in: dir)
+        XCTAssertTrue(url.path.hasPrefix(dir.standardizedFileURL.path))
+        XCTAssertTrue(url.path.hasSuffix("plans/L1.png"))
+    }
+
+    func testStageMediaRejectsTraversal() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        XCTAssertThrowsError(
+            try BundleIO.stageMedia(Data("x".utf8), relativePath: "../evil.bin", in: dir)
+        ) { error in
+            guard case BundleIOError.pathEscapesBundle = error else {
+                return XCTFail("expected pathEscapesBundle, got \(error)")
+            }
+        }
+    }
+
     private func makeTempDir() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("cek-test-\(UUID().uuidString)")

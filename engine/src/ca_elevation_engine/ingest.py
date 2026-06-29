@@ -83,6 +83,16 @@ def parse_capture(data: dict[str, Any], *, validate: bool = True) -> CapturePack
     return CapturePackage.from_dict(data)
 
 
+def validate_report(data: dict[str, Any]) -> None:
+    """Validate an emitted verdict report against its schema (fail-closed).
+
+    The engine's inputs are schema-validated on the way in; this lets the
+    pipeline validate its own output on the way out so the contract is symmetric.
+    Raises :class:`ValidationError` on any schema violation.
+    """
+    _validate(data, "verdict_report")
+
+
 def load_manifest(path: str | Path, *, validate: bool = True) -> SpecManifest:
     """Load and validate a spec manifest from a JSON file."""
     return parse_manifest(_read_json(path), validate=validate)
@@ -127,4 +137,6 @@ def check_compatible(manifest: SpecManifest, capture: CapturePackage) -> list[st
     uncovered = sorted(level_ids - covered_levels)
     if uncovered:
         warnings.append(f"levels with no capture coverage: {', '.join(uncovered)}")
+    if not manifest.devices:
+        warnings.append("manifest declares zero devices: this run verifies nothing")
     return warnings

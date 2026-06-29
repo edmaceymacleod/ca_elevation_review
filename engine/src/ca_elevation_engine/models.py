@@ -128,11 +128,16 @@ class Floorplan:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Floorplan:
+        affine = [float(v) for v in d["pixel_to_model"]]
+        # Enforce the schema's arity at the model layer too, so a bad payload
+        # parsed with validate=False still fails loudly here rather than silently.
+        if len(affine) != 6:
+            raise ValueError(f"pixel_to_model must have 6 elements, got {len(affine)}")
         return cls(
             image=d["image"],
             width_px=int(d["width_px"]),
             height_px=int(d["height_px"]),
-            pixel_to_model=[float(v) for v in d["pixel_to_model"]],
+            pixel_to_model=affine,
         )
 
 
@@ -277,7 +282,11 @@ class SpecManifest:
             project=Project.from_dict(d["project"]),
             levels=[Level.from_dict(x) for x in d["levels"]],
             devices=[Device.from_dict(x) for x in d.get("devices", [])],
-            default_tolerances=Tolerances.from_dict(d.get("default_tolerances")),
+            default_tolerances=(
+                Tolerances.from_dict(d["default_tolerances"])
+                if "default_tolerances" in d
+                else DEFAULT_TOLERANCES
+            ),
             coordinate_system=d.get("coordinate_system", {}),
         )
 
@@ -413,16 +422,26 @@ class Shot:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Shot:
+        pose = [float(v) for v in d["pose"]]
+        if len(pose) != 16:
+            raise ValueError(f"pose must have 16 elements (4x4 row-major), got {len(pose)}")
+        depth_size = d.get("depth_size")
+        if depth_size is not None and len(depth_size) != 2:
+            raise ValueError(f"depth_size must be [height, width], got {depth_size!r}")
+        if d.get("depth_map") is not None and depth_size is None:
+            # The schema documents this dependency; enforce it at the model layer
+            # too so a depth map without its dimensions fails loudly.
+            raise ValueError("depth_size is required when depth_map is present")
         return cls(
             id=d["id"],
             level_id=d["level_id"],
             rgb_image=d["rgb_image"],
             intrinsics=Intrinsics.from_dict(d["intrinsics"]),
-            pose=[float(v) for v in d["pose"]],
+            pose=pose,
             pin=Pin.from_dict(d["pin"]),
             elevation_id=d.get("elevation_id"),
             depth_map=d.get("depth_map"),
-            depth_size=d.get("depth_size"),
+            depth_size=depth_size,
             point_cloud=d.get("point_cloud"),
             captured_at=d.get("captured_at"),
             observations=[Observation.from_dict(o) for o in d.get("observations", [])],

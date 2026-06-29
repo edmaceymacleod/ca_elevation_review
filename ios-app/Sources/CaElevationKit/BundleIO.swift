@@ -28,6 +28,9 @@ public enum BundleIOError: Error, Equatable, Sendable {
     case captureNotFound(path: String)
     case missingReferencedFile(relativePath: String)
     case notADirectory(path: String)
+    /// A referenced media/floorplan path escapes its bundle directory (absolute
+    /// path, `..` traversal, or otherwise resolves outside `directory`).
+    case pathEscapesBundle(relativePath: String)
 }
 
 /// Canonical filenames inside the two bundle directories.
@@ -77,8 +80,14 @@ public enum BundleIO {
     }
 
     /// Resolve a floorplan image's relative path to an absolute URL in the bundle.
-    public static func floorplanURL(for level: Level, in bundleDirectory: URL) -> URL {
-        bundleDirectory.appendingPathComponent(level.floorplan.image)
+    ///
+    /// The floorplan path is untrusted (it comes from a decoded manifest), so it
+    /// is validated to stay within `bundleDirectory`.
+    ///
+    /// - Throws: ``BundleIOError/pathEscapesBundle(relativePath:)`` if the path
+    ///   escapes the bundle directory.
+    public static func floorplanURL(for level: Level, in bundleDirectory: URL) throws -> URL {
+        try resolvedURL(forRelativePath: level.floorplan.image, in: bundleDirectory)
     }
 
     // MARK: - Writing a capture package
@@ -142,7 +151,7 @@ public enum BundleIO {
         relativePath: String,
         in directory: URL
     ) throws -> String {
-        let destination = directory.appendingPathComponent(relativePath)
+        let destination = try resolvedURL(forRelativePath: relativePath, in: directory)
         try FileManager.default.createDirectory(
             at: destination.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -153,8 +162,40 @@ public enum BundleIO {
 
     // MARK: - Helpers
 
+    /// Safely resolve an untrusted relative media/floorplan path against a
+    /// bundle directory, rejecting anything that escapes it.
+    ///
+    /// The relative paths come from decoded (potentially untrusted) bundle and
+    /// capture JSON. This mirrors the Python sibling's guard in `bundle_io.py`:
+    /// reject absolute paths and any `..` component, then standardize and verify
+    /// the resolved URL is contained within `directory`.
+    ///
+    /// - Returns: the resolved absolute URL, guaranteed to be inside `directory`.
+    /// - Throws: ``BundleIOError/pathEscapesBundle(relativePath:)`` on violation.
+    static func resolvedURL(forRelativePath relativePath: String, in directory: URL) throws -> URL {
+        // Reject absolute paths and explicit parent-directory traversal outright.
+        let components = relativePath.split(separator: "/", omittingEmptySubsequences: false)
+        if relativePath.hasPrefix("/") || components.contains("..") {
+            throw BundleIOError.pathEscapesBundle(relativePath: relativePath)
+        }
+
+        let base = directory.standardizedFileURL
+        let resolved = base.appendingPathComponent(relativePath).standardizedFileURL
+
+        // Defense in depth: confirm the standardized target is contained within
+        // the standardized base directory (component-wise prefix, not a bare
+        // string prefix, so a sibling like ".../Bundle-evil" can't pass).
+        let basePath = base.path
+        let resolvedPath = resolved.path
+        let prefix = basePath.hasSuffix("/") ? basePath : basePath + "/"
+        guard resolvedPath == basePath || resolvedPath.hasPrefix(prefix) else {
+            throw BundleIOError.pathEscapesBundle(relativePath: relativePath)
+        }
+        return resolved
+    }
+
     private static func requireFile(_ relativePath: String, relativeTo directory: URL) throws {
-        let url = directory.appendingPathComponent(relativePath)
+        let url = try resolvedURL(forRelativePath: relativePath, in: directory)
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw BundleIOError.missingReferencedFile(relativePath: relativePath)
         }

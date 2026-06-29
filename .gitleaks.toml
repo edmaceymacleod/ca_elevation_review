@@ -11,6 +11,9 @@ useDefault = true
 
 [allowlist]
 description = "Repo-specific false-positive allowlist"
+# The regexes below describe the surrounding LINE, not the matched secret value,
+# so they only suppress a finding when the offending line contains these tokens.
+regexTarget = "line"
 
 paths = [
   # Test fixtures and golden reports contain synthetic ids/poses, not secrets.
