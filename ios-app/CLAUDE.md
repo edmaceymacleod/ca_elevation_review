@@ -82,6 +82,19 @@ A living list. When a platform-specific surprise costs you time, add it here.
 When adding logic, ask: is it pure data/transform? → `CaElevationKit` (with a
 test). Does it touch a sensor/UI? → `CaElevationApp`.
 
+## Look and feel
+
+**Native-default by policy** — the app inherits Apple's design language; we don't
+invent a theme. Use semantic fonts (`.headline`/`.caption`, never hardcoded
+sizes), semantic colors (`.secondary`; status colors carry meaning — green =
+captured, blue/red = camera/other device marker), SF Symbols, and stock controls
+(`.borderedProminent`, `.segmented`). The one brand color is `AccentColor` (a
+blueprint blue) in `Sources/CaElevationApp/Assets.xcassets`; rely on the global
+tint rather than hardcoding it. The app icon there is a **placeholder**. Full
+rationale, the color hex values, and the open questions (app name, final icon)
+are in [`../docs/ui-conventions.md`](../docs/ui-conventions.md) — read it before
+restyling a screen or changing branding.
+
 ## Targets & toolchain
 
 - **Min iOS 17** (matches `Package.swift` and `project.yml`). All LiDAR iPhones
