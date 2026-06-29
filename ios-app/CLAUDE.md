@@ -35,6 +35,22 @@ suggestions.
    the shared `os.Logger`s in `CaElevationApp/Log.swift` (`Log.capture`,
    `Log.bundle`, …) so issues are diagnosable from Console.app / `log` without a
    debugger. Gate verbose logs on `FeatureFlags.verboseCaptureLogging`.
+5. **Test after every change — don't let breaks compound.** Kit change → run
+   `swift test` (the CI-covered suite) before moving on. App/UI change →
+   `xcodegen generate`, **clean build (Cmd+Shift+K)**, build to a Simulator for
+   UI/nav, then run **on a real device** for anything in the capture/depth path
+   and watch `Log.*` in Console.app / `log stream`. (Engine and pyRevit changes
+   have their own `pytest` suites — run those too.)
+6. **Keep each change scoped to one component.** Touch the kit, *or* the app
+   layer, *or* a single view/flow — never "refactor the whole app." The kit/app
+   seam below is the natural unit; smaller scope = better results and easier
+   rollback.
+7. **Leave a session record with rollback steps.** End a major change with a
+   clear commit body (what changed, how it was verified, how to undo) and, for a
+   multi-step or risky change, a dated note under `docs/sessions/` (template in
+   `docs/sessions/README.md`). Rollback must be concrete: `git revert <sha>`, or
+   flip the relevant `FeatureFlags` toggle (rule 3). Every session leaves the
+   tree green and revertible.
 
 ## Platform gotchas (append as found — rule 2)
 
