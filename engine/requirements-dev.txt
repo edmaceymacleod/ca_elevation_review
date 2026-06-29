@@ -44,6 +44,6 @@ pytest==9.1.1
 referencing==0.37.0
 reportlab==5.0.0
 rpds-py==0.30.0
-ruff==0.9.6
+ruff==0.15.20
 tomli==2.4.1
 typing_extensions==4.15.0
