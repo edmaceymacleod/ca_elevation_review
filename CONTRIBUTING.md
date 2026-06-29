@@ -164,6 +164,13 @@ pre-commit run --hook-stage pre-push --all-files    # mypy + schema validation
 pre-commit run --hook-stage manual dotnet-format    # opt-in toolchain hooks
 ```
 
+The default stage also runs a **README freshness** guard
+([`tools/check_readme_freshness.py`](tools/check_readme_freshness.py)): a
+structural change -- a top-level directory added or removed, `engine/pyproject.toml`,
+or any `docs/` file -- must also stage `README.md`, so the top-level docs don't
+go stale while a phase is worked. It blocks the commit but is always bypassable
+with `git commit --no-verify` when a change genuinely needs no README update.
+
 ---
 
 ## Commits and pull requests

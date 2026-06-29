@@ -105,6 +105,7 @@ ca_elevation_review/
 ├── revit-addin/         # Original C# .NET add-in — retained legacy, CI-gated off
 ├── ios-app/             # Swift/SwiftUI/ARKit capture client + CaElevationKit
 ├── docs/                # Design, architecture, schemas, testing, migration plan
+├── tools/               # Repo-level dev hooks (e.g. the README freshness guard)
 ├── CONTRIBUTING.md      # Per-component dev setup + tiered testing model
 └── README.md
 ```
