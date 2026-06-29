@@ -55,10 +55,9 @@ jobs:
       - name: Ruff format check
         run: ruff format --check engine
 
-      - name: mypy (non-blocking)
-        # Young codebase: type errors are surfaced but do not fail the build yet.
-        # Tighten by removing continue-on-error once the engine stabilizes.
-        continue-on-error: true
+      - name: mypy
+        # Blocking: the engine type-checks clean today, so a new type error should
+        # fail the build (matches the pyrevit-extension job, where mypy also gates).
         working-directory: engine
         run: mypy
 

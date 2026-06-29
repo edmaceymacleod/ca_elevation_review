@@ -60,3 +60,15 @@ jobs:
         if: steps.check.outputs.exists == 'true'
         working-directory: ios-app
         run: swift test
+
+      - name: SwiftLint
+        # Lints BOTH the kit and the ARKit app layer (SwiftLint is syntactic --
+        # it does not compile, so it covers app sources without a device).
+        # Non-blocking for now: this Swift cannot be lint-verified off-Mac, so it
+        # reports issues without gating. Flip to blocking (drop continue-on-error)
+        # once it's confirmed clean on a Mac. SwiftLint ships on the GitHub macOS
+        # runner images.
+        if: steps.check.outputs.exists == 'true'
+        continue-on-error: true
+        working-directory: ios-app
+        run: swiftlint lint --config .swiftlint.yml

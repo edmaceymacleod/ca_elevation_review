@@ -1,0 +1,32 @@
+# SwiftLint config for the CA Elevation Review iPhone app.
+#
+# Lints the pure CaElevationKit library and the SwiftUI/ARKit app layer. Run in
+# CI on macOS (currently non-blocking — see .github/workflows/ios-app.yml — until
+# the agent-authored Swift is confirmed clean on a real Mac, then make it gate).
+included:
+  - Sources
+  - Tests
+
+# Generated/derived dirs never exist in the repo but guard anyway.
+excluded:
+  - .build
+  - DerivedData
+
+# Keep the default rule set; relax a few opinionated rules that fight the
+# scaffold's explicit, documentation-heavy style.
+disabled_rules:
+  - todo # `// TODO:`/`// LIVE:` markers are intentional in the stubs.
+  - trailing_comma
+
+line_length:
+  warning: 110
+  error: 160
+  ignores_comments: true
+
+identifier_name:
+  # Allow short math/graphics names (x, y, z, u, v, fx, cx, ...).
+  min_length: 1
+  allowed_symbols: ["_"]
+
+type_name:
+  max_length: 50
