@@ -1,9 +1,12 @@
 # SwiftLint config for the CA Elevation Review iPhone app.
 #
-# Lints the pure CaElevationKit library and the SwiftUI/ARKit app layer. Run in
-# CI on macOS (currently non-blocking — see the CaElevationKit (macos) job in
-# .github/workflows/ci.yml — until
-# the agent-authored Swift is confirmed clean on a real Mac, then make it gate).
+# Lints the pure CaElevationKit library and the SwiftUI/ARKit app layer. Runs in
+# CI on macOS and GATES (see the CaElevationKit (macos) job in
+# .github/workflows/ci.yml): pre-existing violations are absorbed by the
+# committed baseline (.swiftlint-baseline.json) so only NEW violations fail the
+# build. Regenerate the baseline on a Mac with:
+#   cd ios-app && swiftlint lint --config .swiftlint.yml \
+#       --write-baseline .swiftlint-baseline.json
 included:
   - Sources
   - Tests
