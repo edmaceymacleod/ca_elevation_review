@@ -1,13 +1,13 @@
 # As-Built Elevation Verification Tool -- design sketch
 
-**Status:** Draft -- 2026-06-28. Architecture and UX sketch for a NEW standalone repo
-(working name **PlumbAR**, TBD). This document lives in the Sterling specs folder for now because
-that is where design work happens today; it will move to the new repo's `docs/` once that repo is
-scaffolded. Nothing here is implemented yet.
+**Status:** Draft -- last updated 2026-06-29. Architecture and UX sketch for this repo
+(working name **PlumbAR**, TBD). The repo is now scaffolded and this document lives in its `docs/`.
+Phase 0 (engine + fixtures + CI) is in progress -- see [`../README.md`](../README.md) for the
+current build state.
 
 **Scope of this document:** capture the product shape, the three-component architecture, the field
-and desktop UX, the verification pipeline, the testing/CI discipline to port from this repo, the
-build phasing, and the human-vs-Claude responsibility split. It is a sketch to argue from, not a
+and desktop UX, the verification pipeline, the testing/CI discipline ported from the Sterling repo,
+the build phasing, and the human-vs-Claude responsibility split. It is a sketch to argue from, not a
 final contract; open questions are listed at the end.
 
 ---
@@ -198,19 +198,19 @@ sub-inch accuracy.
 
 ## Porting the testing / CI / fixture discipline
 
-The hard-won discipline in this repo transfers as *principles*, not IronPython specifics. The new
-repo recreates each, adapted to a three-language stack.
+The hard-won discipline from the Sterling pyRevit repo transfers as *principles*, not IronPython
+specifics. This repo recreates each, adapted to a three-language stack.
 
 1. **Fixture as immutable single source of truth, built by seeders.**
-   This repo enumerates fixture contents as `PROJECT_INVARIANTS` (each an `F-NN` id + title +
+   The Sterling repo enumerates fixture contents as `PROJECT_INVARIANTS` (each an `F-NN` id + title +
    verifier) and builds them with deterministic, version-gated `fNN_<slug>.py` seeders; ad-hoc
-   fixture mutation is forbidden. Port: the new repo needs (a) a sample Revit model for
+   fixture mutation is forbidden. Port: this repo needs (a) a sample Revit model for
    manifest-extraction tests, (b) synthetic + at least one real capture package (E57 + posed
    images + pins), and (c) golden expected reports. Each fixture property gets an invariant id +
    verifier; seeders build them deterministically; tests read, never write.
 
 2. **Registry as single source of truth + coverage ratchets.**
-   This repo's `REGISTRY` declares every tool with its contracts, and `test_testing_registry.py`
+   The Sterling repo's `REGISTRY` declares every tool with its contracts, and `test_testing_registry.py`
    enforces one-way coverage ratchets (every tool folder registered or explicitly waived; new
    smoke-only entries capped at zero; allowlists purged of stale entries). Port: a registry of
    engine checks and capture scenarios, with ratchet tests that fail when a new check or supported
@@ -296,7 +296,7 @@ The license stays Apache-2.0 regardless.
 
 ## Open questions
 
-1. **Name.** Working name PlumbAR; alternatives welcome. Decide before scaffolding the repo.
+1. **Name.** Working name PlumbAR; alternatives welcome.
 2. **Bundle transfer mechanism.** AirDrop vs iCloud Drive vs Files vs cable -- pick the default
    round-trip UX (local-only, no sync server).
 3. **Revit version targets.** Which years (2024 / 2025 / 2026) does the add-in support at launch?
@@ -305,8 +305,7 @@ The license stays Apache-2.0 regardless.
    which model; how much it is leaned on given identity stays human-confirmed in v1.
 6. **Report format.** PDF vs HTML as the primary deliverable.
 7. **Manifest + capture-package schema.** Lock the field list and JSON-Schema before Phase 0 tests.
-8. **Where the new repo lives** and when to scaffold it (with the CI/fixture skeleton from day one).
 
 ---
 
-*Working name: PlumbAR (TBD). Last updated: 2026-06-28.*
+*Working name: PlumbAR (TBD). Last updated: 2026-06-29.*
