@@ -111,8 +111,9 @@ the pure `lib` modules free of pyRevit globals (the stubs take a doc handle).
     convention** (see below), because the engine's own ruff/mypy pins are `py310`
     and would silently *permit* 3.10-only constructs.
     **The 3.8 floor is a syntax/lint target, not the runtime.** The actual runtime
-    is whatever the pinned pyRevit release bundles — almost certainly *newer* than
-    3.8 (5.x/6.x lines bundle 3.11; the host in this environment is CPython 3.11).
+    is whatever the pinned pyRevit release bundles — newer than 3.8: the 5.x line
+    bundles 3.11 and the **pinned 6.1.0 line bundles CPython 3.12.3** (cengine
+    `CPY3123`, verified live 2026-06-29 — see Open item 1).
     The py38/py39 floor jobs are a guard against accidental 3.10-only syntax, **not**
     proof "we run on 3.8." pyRevit has **no runtime CPython-version gate** (there is
     no `bundle.yaml` min-engine-version key — see Section 4); the only runtime floor
@@ -298,7 +299,9 @@ workflow + pre-commit `files` regex.)
     differences. This code guard, in code where it can actually run, is the
     in-Revit counterpart to the CI floor (bundle.yaml cannot do it). Pin/test
     against a pyRevit release not affected by #3092, and make this a validation
-    checkpoint for Ed.
+    checkpoint for Ed. **Resolved (2026-06-29): #3092 is closed (PR #3098) and
+    fixed from 6.1.0 ("PyRevitRunner honors CPython hashbang"); the dev machine is
+    pinned at 6.1.0.26047. See Open item 1.**
 - **Floorplan data-flow (the affine hand-off).** The schema *requires* per level
   a `floorplan` with `image`, `width_px`, `height_px`, and a 6-element
   `pixel_to_model` affine — and these originate in the live export, not device
@@ -695,12 +698,25 @@ hardware + sign-off as the remaining gate.
 
 1. **pyRevit version floor** (and therefore the bundled CPython the `lib/` code
    must support) — and which pinned pyRevit release this plan targets.
-   **Resolve before building** — it sets the lint floor (there is no `bundle.yaml`
-   engine-version constraint to set; pyRevit has no such key — Section 4).
-   *Recommendation:* CPython 3.8 as the `lib/` syntax target
-   (the oldest engine we may land on). Bundled-CPython by line: **4.8.x → 3.8;
-   5.x → 3.11** (not 3.12); the **6.x** line is current — verify its engine
-   version against the target release's `bin/cengines` before pinning.
+   **RESOLVED (live, 2026-06-29 — Revit 2025 dev machine).**
+   - **Pin: pyRevit ≥ 6.1.0.** The dev machine runs **6.1.0.26047** (the latest
+     release; `pyrevit --version` reports "you have the latest version").
+   - **#3092 is fixed on the pinned line.** The 6.0.0 hashbang-routing defect
+     (`#! python3` scripts run under IronPython) is **closed via PR #3098**, and
+     the **6.1.0** release notes record *"PyRevitRunner honors CPython hashbang"* —
+     i.e. the fix first ships in 6.1.0, the pinned version. The `script.py`
+     runtime guard (`sys.implementation` / `sys.version_info`) stays as the
+     in-Revit belt-and-suspenders enforcer regardless, so even a future
+     regression fails loud rather than silently running under IronPython.
+   - **Bundled CPython on the pin = 3.12.3** (cengine `CPY3123`, the only engine
+     installed under `…\pyRevit-Master\bin\cengines`). So the **6.x line bundles
+     CPython 3.12**, *not* 3.11 — correcting the earlier assumption below.
+   - **Keep CPython 3.8 as the `lib/` syntax/lint target** — it sits safely below
+     the 3.12.3 runtime and stays the conservative floor should an older pyRevit
+     ever be pinned. The floor is a lint target, not the runtime; the runtime on
+     this pin is 3.12.3. (There is no `bundle.yaml` engine-version constraint to
+     set; pyRevit has no such key — Section 4.) Bundled-CPython by line for
+     reference: **4.8.x → 3.8; 5.x → 3.11; 6.1.x → 3.12.3 (verified here).**
 2. **C# add-in: keep one cycle, then remove — gated on the closed-tier question,
    not just user validation.** *Recommendation:* keep `revit-addin/` CI-gated off;
    delete once pyRevit-as-prerequisite is validated with real users and Ed's live

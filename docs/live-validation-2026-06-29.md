@@ -92,9 +92,94 @@ production model.
 `int(eid.Value)` works. Vendored `lib/ca_elevation_revit/_compat.py`
 (`eid_value` / `make_eid`) mirrors Sterling `revit_compat` for 2025/2026 safety.
 
-## Still to do (needs production model)
-- [ ] `extract_devices` against real low-voltage devices (UniqueId identity invariant).
-- [ ] `revit_writeback.apply_verdicts` + `clear_prior_overrides` idempotency incl.
-      the drop-a-device case (resolve by `doc.GetElement(UniqueId)`, OverrideGraphicSettings,
-      marker via Comments sentinel).
-- [ ] Full `ExportBundle` end-to-end (level picker → manifest → bundle) on a real model.
+## Part 2 — production-model validation (2026-06-29, later same day)
+
+The three items below were previously blocked on "a model with real placed
+devices" (the `FIXTEST_AVX` fixture has zero). They are now **validated against a
+real workshared production model** opened on the same Revit 2025 machine.
+
+**Client-data firewall.** That model is a client production model and this repo is
+public, so **nothing identifying is recorded here** — no project name, path,
+level/family/type names, coordinates, UniqueIds, or exported imagery. Only shapes,
+counts, and pass/fail. All identifiers below are SHA-1-truncated or counted.
+
+**Non-destructive method (model left pristine).** Extraction is read-only.
+Write-back and any render run inside a `TransactionGroup` that is **rolled back** —
+which, confirmed here, restores `Document.IsModified == false` even after inner
+`Transaction.Commit()`s. The model was **never saved and never synced**
+(per instruction). Post-run scan: 0 leaked overrides, 0 leaked Comments markers,
+`IsModified == false`. The heavy-linked-model `doc.Regenerate()` was avoided
+(it can wedge Revit); the export/affine mechanic is already proven exact above, so
+the bundle→engine chain (item 3) ran on real *device* data via the real `lib` +
+engine on the PC rather than re-exporting the heavy model.
+
+**Environment delta.** Revit **2025.4**; pyRevit **6.1.0.26047** (bundled CPython
+engine **`CPY3123` = 3.12.3**). MCP `execute_code` is IronPython 2.7 (as before);
+the inline probes therefore mirror the lib's `_compat.element_name` **descriptor**
+workaround — a naive `getattr(sym, "Name")` returns `""` under IronPython (the
+exact quirk that helper exists to defeat); the descriptor path returns the real
+name. Production runtime is CPython 3.12.3 where plain `.Name` works.
+
+### Item 1 — `extract_devices` against real devices — **PASS**
+Walked the 7 device categories over the host model:
+- **2,658 devices** (Security 32, ElectricalFixtures 24, Communication 164,
+  Data 2,438; AudioVisual/NurseCall/FireAlarm categories resolve on R25, 0
+  instances here). 12 levels in the model.
+- **UniqueId identity invariant: 2,658 / 2,658 round-trip** via
+  `doc.GetElement(uniqueId)` → same `ElementId`, **0 failures**. This is the
+  migration-plan acceptance criterion (the bug that "passes every CI test yet
+  resolves nothing live"), proven on real data.
+- **Level-parameter fallback genuinely exercised:** only **133** devices expose
+  their level via `Element.LevelId`; **2,128** resolve *only* through the
+  `SCHEDULE_LEVEL_PARAM` fallback (lost without it); **397** have no resolvable
+  level (correctly skipped by design — `skipped_level`).
+- **Position:** 2,656 `Location.Point`, **2** bbox-centre fallback (the documented
+  curve/line caveat), 0 unlocatable. **Orientation:** 2,658 / 2,658 via
+  `FacingOrientation`. Family + type names non-empty via descriptor-safe
+  `element_name` (16/16 sampled, lengths 1–29).
+
+### Item 2 — `revit_writeback` idempotency + solid fill — **PASS (API-level)**
+Apply → verify → clear-by-marker → drop-a-device → verify → rollback, all in one
+rolled-back `TransactionGroup` on real overridable elements (a real `View3D`):
+- Apply 6/6: projection-line colour set; **surface foreground pattern id == the
+  resolved solid `FillPatternElement` and `IsSurfaceForegroundPatternVisible ==
+  True`** (the #15 fill fix, proven at the API level — the prior gap was a *null*
+  pattern id → empty fill); Comments sentinel stamped 6/6.
+- `_solid_fill_pattern_id` resolved a drafting solid fill (not None).
+- Clear-by-marker found & reset all 6 prior overrides **without** the new id set.
+- **Drop-a-device:** the device removed from the new report returned to default
+  overrides **and** lost its marker; the 5 kept devices re-coloured + re-marked.
+- After group rollback: 6/6 default, 6/6 unmarked, `IsModified == false`.
+- **Visual eyeball deferred** to a lightweight, client-data-free fixture (a
+  full/cropped render of the heavy linked production model is both risky and
+  un-committable as client imagery). API proof above is definitive that the
+  override paints a solid fill; the committable screenshot is a follow-up.
+  (R2025 note: `IsolateElementsTemporary` and `doc.Regenerate()` each require an
+  open transaction — both surfaced during render attempts and were rolled back.)
+
+### Item 3 — full bundle → engine → writeback on real data — **PASS**
+60 real device records (one level, read-only) → the **real `lib`**
+(`device_dict` → `build_manifest` → `bundle_io.write_field_bundle`) → the **real
+`ca-elevation run`** CLI (own venv, CPython 3.11) → `verdict_report.json`
+(rc 0) → the **real `writeback.overrides_for_report`** mapping:
+- 60 device results; synthetic capture exercised all four verdicts —
+  **absent 10, flag 13, type_mismatch 11, pass 26**.
+- 60 overrides built; all four palette colours used; **sentinel colour used 0×**
+  (no unmapped verdict); **every override `device_id` is a real Revit UniqueId**.
+- Floorplan record used the affine proven in Part 1; engine run was `--format
+  json` (no image needed). Closes the identity loop end-to-end: extract stamps
+  UniqueId → manifest → engine echoes → writeback resolves by it.
+
+### Open item 1 (pyRevit pin + CPython floor) — **RESOLVED**
+Pin **pyRevit ≥ 6.1.0** (machine on 6.1.0.26047, latest). #3092 (6.0.0
+`#! python3`→IronPython misroute) is **closed via PR #3098** and fixed from
+**6.1.0** ("PyRevitRunner honors CPython hashbang"). Bundled CPython on the pin is
+**3.12.3**; the `lib/` **3.8** lint floor is kept as the conservative target. The
+`script.py` runtime guard stays the in-Revit enforcer. See
+`docs/pyrevit-migration-plan.md` Open item 1.
+
+### Still open (acceptable / deferred)
+- [ ] Committable solid-fill **screenshot** on a lightweight seeded fixture
+      (visual confirmation of item 2; API-confirmed above).
+- [ ] Documented minor caveats remain acceptable: curve/line devices use bbox-z
+      (2 seen here); `up_axis` hardcoded `'up'`.
