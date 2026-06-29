@@ -16,9 +16,16 @@ struct CoverageView: View {
     let level: Level
 
     @EnvironmentObject private var session: CaptureSessionModel
+    // The library holds the security-scoped root folder for the session; the
+    // Phase 2 write-back copies the package into it (CoverageView only reads
+    // `root` here, never mutates the library).
+    @Environment(ProjectLibrary.self) private var library
     @State private var exportedPackageURL: URL?
     @State private var isSharing = false
     @State private var exportError: String?
+    /// Transient, non-blocking status for the Phase 2 write-back (e.g. "Saved to
+    /// folder" or the couldn't-sync fallback hint). Never gates the export.
+    @State private var writeBackStatus: String?
 
     var body: some View {
         VStack {
@@ -67,6 +74,31 @@ struct CoverageView: View {
             Button("OK") { exportError = nil }
         } message: {
             Text(exportError ?? "")
+        }
+        // Phase 2 write-back result: a brief, non-blocking toast layered over the
+        // share sheet (which is the always-on fallback). Never an error alert —
+        // a sync miss must not look like an export failure.
+        .overlay(alignment: .bottom) { writeBackToast }
+        .animation(.default, value: writeBackStatus)
+    }
+
+    @ViewBuilder
+    private var writeBackToast: some View {
+        if let writeBackStatus {
+            Text(writeBackStatus)
+                .font(.callout)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .task(id: writeBackStatus) {
+                    // Auto-dismiss; sleep is cancelled if the status changes.
+                    try? await Task.sleep(for: .seconds(4))
+                    self.writeBackStatus = nil
+                }
         }
     }
 
@@ -123,8 +155,47 @@ struct CoverageView: View {
             )
             exportedPackageURL = url
             isSharing = true
+
+            // Phase 2 (feature-flagged): ALSO write the package back into the
+            // OneDrive library folder so the desktop picks it up automatically.
+            // The share sheet above stays the unconditional fallback; this runs
+            // off the main actor and can never block the export-success path.
+            if FeatureFlags.current().writeBackToRoot {
+                writeBackToLibrary(localPackage: url)
+            }
         } catch {
             exportError = String(describing: error)
+        }
+    }
+
+    /// Copy the just-exported package into the security-scoped library folder,
+    /// off the main actor, surfacing a brief non-blocking status either way.
+    private func writeBackToLibrary(localPackage: URL) {
+        guard let root = library.root, let projectDirectory = session.bundleDirectory else {
+            // No library root / project dir to write into — keep the share sheet
+            // as the fallback and tell the operator how to deliver the package.
+            #if canImport(OSLog)
+            Log.bundle.error("Write-back skipped: missing library root or project directory")
+            #endif
+            writeBackStatus = WriteBack.failureMessage
+            return
+        }
+        Task { @MainActor in
+            let outcome = await Task.detached(priority: .utility) {
+                WriteBack.run(
+                    localPackageDirectory: localPackage,
+                    projectDirectory: projectDirectory,
+                    libraryRoot: root
+                )
+            }.value
+            switch outcome {
+            case .saved:
+                // "Saved to folder", not "synced": the OneDrive upload is async
+                // and outside our control — we only know the bytes landed.
+                writeBackStatus = "Saved to folder"
+            case .failed:
+                writeBackStatus = WriteBack.failureMessage
+            }
         }
     }
 }

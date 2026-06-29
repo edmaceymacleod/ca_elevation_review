@@ -204,7 +204,11 @@ public enum BundleIO {
     ///
     /// - Returns: the resolved absolute URL, guaranteed to be inside `directory`.
     /// - Throws: ``BundleIOError/pathEscapesBundle(relativePath:)`` on violation.
-    static func resolvedURL(forRelativePath relativePath: String, in directory: URL) throws -> URL {
+    ///
+    /// Public so the app layer's write-back (which builds a destination *inside*
+    /// the library root) reuses this exact traversal guard instead of bypassing
+    /// it with a raw `appendingPathComponent`.
+    public static func resolvedURL(forRelativePath relativePath: String, in directory: URL) throws -> URL {
         // Reject absolute paths and explicit parent-directory traversal outright.
         let components = relativePath.split(separator: "/", omittingEmptySubsequences: false)
         if relativePath.hasPrefix("/") || components.contains("..") {

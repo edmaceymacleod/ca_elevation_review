@@ -8,6 +8,23 @@ final class FeatureFlagsTests: XCTestCase {
         XCTAssertFalse(flags.multiShotSweep)
         XCTAssertFalse(flags.meshReconstruction)
         XCTAssertFalse(flags.verboseCaptureLogging)
+        XCTAssertFalse(flags.writeBackToRoot)
+    }
+
+    func testWriteBackToRootResolvesFromOverride() {
+        // The Phase 2 write-back path must be flippable at runtime (instant
+        // rollback, CLAUDE.md rule 3): off by default, on only when overridden.
+        XCTAssertFalse(FeatureFlags.default.writeBackToRoot)
+
+        let on = FeatureFlags.resolved(overrides: ["writeBackToRoot": true])
+        XCTAssertTrue(on.writeBackToRoot)
+        // Other flags stay at their default-off state.
+        XCTAssertFalse(on.multiShotSweep)
+        XCTAssertFalse(on.meshReconstruction)
+        XCTAssertFalse(on.verboseCaptureLogging)
+
+        let off = FeatureFlags.resolved(overrides: ["writeBackToRoot": false])
+        XCTAssertFalse(off.writeBackToRoot)
     }
 
     func testResolvedAppliesOverridesAndIgnoresUnknownKeys() {

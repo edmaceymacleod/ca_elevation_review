@@ -13,15 +13,23 @@ public struct FeatureFlags: Sendable, Equatable {
     public var meshReconstruction: Bool
     /// Emit verbose `os.Logger` diagnostics from the capture pipeline.
     public var verboseCaptureLogging: Bool
+    /// Phase 2 of the OneDrive round trip: after exporting a capture package,
+    /// ALSO copy it back into the library root folder so the desktop picks it
+    /// up automatically. The share-sheet export stays the unconditional
+    /// fallback; this only adds the write-back. Risky (provider/network IO), so
+    /// it is gated here for instant rollback (see `../../CLAUDE.md` rule 3).
+    public var writeBackToRoot: Bool
 
     public init(
         multiShotSweep: Bool = false,
         meshReconstruction: Bool = false,
-        verboseCaptureLogging: Bool = false
+        verboseCaptureLogging: Bool = false,
+        writeBackToRoot: Bool = false
     ) {
         self.multiShotSweep = multiShotSweep
         self.meshReconstruction = meshReconstruction
         self.verboseCaptureLogging = verboseCaptureLogging
+        self.writeBackToRoot = writeBackToRoot
     }
 
     /// Conservative defaults: every experimental path is OFF.
@@ -35,6 +43,7 @@ public struct FeatureFlags: Sendable, Equatable {
         if let value = overrides["multiShotSweep"] { flags.multiShotSweep = value }
         if let value = overrides["meshReconstruction"] { flags.meshReconstruction = value }
         if let value = overrides["verboseCaptureLogging"] { flags.verboseCaptureLogging = value }
+        if let value = overrides["writeBackToRoot"] { flags.writeBackToRoot = value }
         return flags
     }
 }
