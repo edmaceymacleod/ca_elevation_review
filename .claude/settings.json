@@ -6,7 +6,8 @@
       "Bash(python3 engine/tools/validate_schemas.py)",
       "Workflow",
       "Agent",
-      "Task"
+      "Task",
+      "Edit(.pre-commit-config.yaml)"
     ]
   }
 }
