@@ -171,8 +171,10 @@ final class ProjectLibrary {
                 return ProjectEntry(url: url, manifest: try decoder.decode(SpecManifest.self, from: data))
             } catch {
                 #if canImport(OSLog)
+                let name = url.lastPathComponent
+                let reason = error.localizedDescription
                 Log.bundle.error(
-                    "Skipping \(url.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "Skipping \(name, privacy: .public): \(reason, privacy: .public)"
                 )
                 #endif
                 return nil
