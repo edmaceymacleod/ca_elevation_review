@@ -162,7 +162,7 @@ jobs:
       - name: Fixture/golden drift guard (re-run seeders, assert no diff)
         run: python engine/tools/regen_fixtures.py --check
 
-  # --- iOS: build/test the pure kit (blocks); SwiftLint (non-blocking) ------
+  # --- iOS: build/test the pure kit (blocks); SwiftLint gates (--strict) ------
   ios_kit:
     name: CaElevationKit (macos)
     needs: changes
@@ -177,10 +177,17 @@ jobs:
       - name: swift test
         working-directory: ios-app
         run: swift test
-      - name: SwiftLint (non-blocking until confirmed clean on a Mac)
-        continue-on-error: true
+      # SwiftLint is not preinstalled on current macos-latest images, so install
+      # it explicitly -- otherwise the gating step below fails with
+      # "swiftlint: command not found".
+      - name: Install SwiftLint
+        run: brew install swiftlint
+      # SwiftLint GATES: the repo is clean, so any violation (new or otherwise)
+      # fails the job. --strict promotes warnings to errors so nothing slips
+      # through as a non-failing warning.
+      - name: SwiftLint (gating)
         working-directory: ios-app
-        run: swiftlint lint --config .swiftlint.yml
+        run: swiftlint lint --strict --config .swiftlint.yml
 
   # --- iOS: build the actual App target so actool compiles the asset catalog --
   #

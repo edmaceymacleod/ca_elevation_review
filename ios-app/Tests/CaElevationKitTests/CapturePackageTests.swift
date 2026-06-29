@@ -44,7 +44,7 @@ final class CapturePackageTests: XCTestCase {
 
     func testEncodedJSONUsesSnakeCaseKeys() throws {
         let data = try BundleIO.makeEncoder().encode(makePackage())
-        let json = String(decoding: data, as: UTF8.self)
+        let json = try XCTUnwrap(String(bytes: data, encoding: .utf8))
 
         // Spot-check the wire field names match the engine schema exactly.
         XCTAssertTrue(json.contains("\"schema_version\""))

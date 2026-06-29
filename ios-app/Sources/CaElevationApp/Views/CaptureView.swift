@@ -69,7 +69,9 @@ struct CaptureView: View {
         HStack {
             Label(
                 capture.isDepthAvailable ? "LiDAR ready" : "No depth",
-                systemImage: capture.isDepthAvailable ? "dot.radiowaves.left.and.right" : "exclamationmark.triangle"
+                systemImage: capture.isDepthAvailable
+                    ? "dot.radiowaves.left.and.right"
+                    : "exclamationmark.triangle"
             )
             .font(.caption.bold())
             .padding(8)
