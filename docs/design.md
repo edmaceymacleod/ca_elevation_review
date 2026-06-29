@@ -1,7 +1,7 @@
 # As-Built Elevation Verification Tool -- design sketch
 
 **Status:** Draft -- 2026-06-28. Architecture and UX sketch for a NEW standalone repo
-(working name **PlumbAR**, TBD). This document lives in the Sterling specs folder for now because
+(**CA Elevation Review** -- name decided). This document lives in the Sterling specs folder for now because
 that is where design work happens today; it will move to the new repo's `docs/` once that repo is
 scaffolded. Nothing here is implemented yet.
 
@@ -296,17 +296,18 @@ The license stays Apache-2.0 regardless.
 
 ## Open questions
 
-1. **Name.** Working name PlumbAR; alternatives welcome. Decide before scaffolding the repo.
-2. **Bundle transfer mechanism.** AirDrop vs iCloud Drive vs Files vs cable -- pick the default
+The app name is **decided: CA Elevation Review** (no longer open).
+
+1. **Bundle transfer mechanism.** AirDrop vs iCloud Drive vs Files vs cable -- pick the default
    round-trip UX (local-only, no sync server).
-3. **Revit version targets.** Which years (2024 / 2025 / 2026) does the add-in support at launch?
-4. **Minimum iPhone.** Confirm iPhone Pro w/ LiDAR; which generation floor.
-5. **Vision model for device typing.** On-device CoreML in the app vs desktop-side in the engine;
+2. **Revit version targets.** Which years (2024 / 2025 / 2026) does the add-in support at launch?
+3. **Minimum iPhone.** Confirm iPhone Pro w/ LiDAR; which generation floor.
+4. **Vision model for device typing.** On-device CoreML in the app vs desktop-side in the engine;
    which model; how much it is leaned on given identity stays human-confirmed in v1.
-6. **Report format.** PDF vs HTML as the primary deliverable.
-7. **Manifest + capture-package schema.** Lock the field list and JSON-Schema before Phase 0 tests.
-8. **Where the new repo lives** and when to scaffold it (with the CI/fixture skeleton from day one).
+5. **Report format.** PDF vs HTML as the primary deliverable.
+6. **Manifest + capture-package schema.** Lock the field list and JSON-Schema before Phase 0 tests.
+7. **Where the new repo lives** and when to scaffold it (with the CI/fixture skeleton from day one).
 
 ---
 
-*Working name: PlumbAR (TBD). Last updated: 2026-06-28.*
+*Name: CA Elevation Review (decided). Last updated: 2026-06-29.*

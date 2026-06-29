@@ -92,9 +92,10 @@ captured; floorplan pins encode role, blue `camera.fill` = a camera shot, red
 (`.borderedProminent`, `.segmented`). The one brand color is `AccentColor` (a
 blueprint blue) in `Sources/CaElevationApp/Assets.xcassets`; rely on the global
 tint rather than hardcoding it. The app icon there is a **placeholder**. Full
-rationale, the color hex values, and the open questions (app name, final icon)
+rationale, the color hex values, and the remaining open question (final icon)
 are in [`../docs/ui-conventions.md`](../docs/ui-conventions.md) — read it before
-restyling a screen or changing branding.
+restyling a screen or changing branding. (The app name is decided: **CA
+Elevation Review**.)
 
 ## Targets & toolchain
 
