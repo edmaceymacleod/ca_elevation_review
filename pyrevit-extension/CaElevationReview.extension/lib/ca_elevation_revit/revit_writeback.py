@@ -201,9 +201,9 @@ def _solid_fill_pattern_id(doc):  # noqa: ANN001
     matching the name. None when the model has no solid fill pattern at all.
     """
     from Autodesk.Revit.DB import (
-        FilteredElementCollector,
         FillPatternElement,
         FillPatternTarget,
+        FilteredElementCollector,
     )
 
     any_solid = None
