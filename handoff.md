@@ -3,62 +3,57 @@
 Transient scratchpad for notes to the **next** session. Keep durable facts out of
 here — **persistent records live in `docs/`**.
 
-The live-Revit validation of the LIVE `revit_*` stubs is **complete** (PRs #22,
-#25); the pyRevit extension is registered + loads its ribbon (PR #26); the Swift
-kit builds/tests on Windows (PR #24). Persistent records:
+Project orientation (durable records):
 
-- `docs/live-validation-2026-06-29.md` — extract / write-back / bundle→engine
-  evidence (Part 2) + the solid-fill eyeball.
-- `docs/pyrevit-migration-plan.md` — pyRevit pin / CPython-floor (Open item 1)
-  and remaining open migration items.
+- `docs/live-validation-2026-06-29.md` — live `revit_*` extract / write-back /
+  bundle→engine evidence + the solid-fill eyeball (PRs #22, #25).
+- `docs/pyrevit-migration-plan.md` — pyRevit pin / CPython-floor and remaining
+  open migration items. The pyRevit extension registers + loads its ribbon (#26).
 
-## Landed
+## Just landed — 2026-06-30 (CI cross-platform hardening + a bug it caught)
 
-- **Item 2 — kit ⟷ engine schema cross-check (GATING, merged #30).** `xlang_schema`
-  CI job (macOS): a shared `CaElevationFixtures` target + a `cek-emit` executable
-  emit the kit's `CapturePackage` + `SpecManifest` through the kit's own encoder →
-  JSON → validated against the **authoritative**
-  `engine/src/ca_elevation_engine/schemas/{capture_package,spec_manifest}.schema.json`
-  (`jsonschema`-only, engine-free, so the registered-golden check degrades to a
-  NOTE). Fail-closed `test -s` guard. PC repro: `ios-app/scripts/win-xlang-check.ps1`.
-  **Honest scope:** schema *shape* vs ONE rich positive sample — not date-time
-  `format` (neither side enforces it) and not a future optional field added on one
-  side only. **CONTRIBUTING rule:** a new `Codable` wire field MUST be populated in
-  `Fixtures`, or it never reaches the wire and drift on it is invisible.
+Both previous handoff next-steps shipped, plus a regression the new Windows leg
+surfaced. Self-documenting in `ci.yml` comments + the PRs; listed here only as
+orientation:
 
-- **1A + 1C — Foundation-only enforcement (GATING, PR for `claude/foundation-only-enforcement`).**
-  *1A:* a grep import-guard step in `ios_kit` over the pure targets
-  (`CaElevationKit` + `CaElevationFixtures` + `cek-emit`) — the real, *sufficient*
-  check for the Foundation-only invariant; it catches `#if canImport(...)`-guarded
-  leaks a Windows/Linux compile would skip. *1C:* a gating `ios_kit_linux` job
-  (`container: swift:6.0`, no setup-swift action to drift) — the cross-toolchain
-  leg `Package.swift` already claims. Both wired into `all-green` needs + R-map.
+- **#30** — kit⟷engine schema cross-check (gating `xlang_schema`; shared
+  `CaElevationFixtures` target + `cek-emit` executable; PC repro
+  `ios-app/scripts/win-xlang-check.ps1`).
+- **#31** — Foundation-only enforcement: gating grep import-guard in `ios_kit`
+  (over the pure targets) + gating Linux leg `ios_kit_linux` (`container: swift:6.0`).
+- **#32** — informational Windows leg `ios_kit_windows` (`windows-2022`, Swift
+  6.3.2 via `SwiftyLab/setup-swift@v1.14.0` + SHA-pinned `ilammy/msvc-dev-cmd`).
+  NON-gating: omitted from `all-green` + job-level `continue-on-error`, so a
+  Windows flake never fails the CI *workflow* (which would block owner auto-merge
+  for all iOS PRs).
+- **#33** — fix: `BundleIO.resolvedURL` rejected every valid path on Windows (8.3
+  short-name expansion in `resolvingSymlinksInPath` vs a not-yet-created tail);
+  the informational Windows leg is what surfaced it. iOS (production) unaffected.
 
-## 1B — Windows kit job (INFORMATIONAL, this PR)
+## Next steps
 
-The `swift build`/`swift test` Windows leg (`windows-2022`, Swift 6.3.2 via
-`SwiftyLab/setup-swift@v1.14.0` + SHA-pinned `ilammy/msvc-dev-cmd`, `--scratch-path`
-for MAX_PATH, SDKROOT diagnostic/fallback). **NON-GATING:** omitted from
-`all-green` + job-level `continue-on-error`, so a Windows flake never fails the CI
-**workflow** (which would block owner auto-merge for *all* iOS PRs). The hosted
-Swift-on-Windows setup **worked first try** (setup-swift served 6.3.2, MSVC
-activated, build + tests ran).
+1. **Local-SwiftLint parity (small; auto-merges — touches no workflow file).**
+   - Add **`.gitattributes`** forcing LF for sources. The repo has none, so Windows
+     checkouts are CRLF and `swiftlint` throws false `comma` / `trailing_newline`
+     on EVERY file (vs CI's LF). After adding it run `git add --renormalize .` so
+     the working tree flips to LF.
+   - Add **`ios-app/scripts/win-swiftlint.ps1`** mirroring `win-kit-test.ps1`:
+     prepend the installer USER PATH (so `sourcekitdInProc.dll` loads) + set
+     `SDKROOT`, then `swiftlint lint --strict --config .swiftlint.yml`.
+   - `swiftlint.exe` **0.65.0** is already installed at
+     `C:\Users\ed.macey-macleod\tools\swiftlint` (on the USER PATH). It needs the
+     Swift toolchain on PATH (SourceKit) and LF line endings to match CI.
+2. **(Optional) Promote the Windows leg to gating.** The kit already builds green
+   on Windows; keep it informational until the *setup* (toolchain download /
+   setup-swift / msvc-dev-cmd) is observed stable over several runs. To promote:
+   add `ios_kit_windows` to `all-green`'s `needs:` **and** R-map in ONE commit and
+   drop `continue-on-error`. (Narrow its trigger to `ios-app/**`, excluding
+   `ci.yml`, so routine CI edits aren't gated on Swift-on-Windows availability.)
 
-**It immediately earned its keep:** the first run caught a real **#28 regression**
-— `BundleIO.resolvedURL` rejected *every* valid bundle path on Windows because
-`resolvingSymlinksInPath()` expands the 8.3 short name (`ED0B62~1.MAC` →
-`ed.macey-macleod`) for a fully-existing path but not for one with a not-yet-created
-tail, so the independently-resolved ancestors mismatched. Fixed in **#33** (anchor
-the containment check on the canonical `realBase`; compare by path components).
-macOS/Linux never saw it; iOS (production) is unaffected (no short names). This
-PR is rebased on #33, so its Windows job is green.
+## Gotcha — merging CI PRs (verified 2026-06-30)
 
-**Promotion to gating** (later, optional): the kit now builds green on Windows, but
-keep it informational until the *setup* (toolchain download / action) is observed
-stable across several runs; then add `ios_kit_windows` to `all-green`'s `needs:`
-AND R-map in ONE commit.
-
-> **Merge note:** every CI PR touches `.github/workflows/ci.yml`, which neither the
-> auto-merge bot nor the local `gh` (scopes: `gist, read:org, repo`) can merge —
-> needs `workflow` scope (`gh auth refresh -s workflow`) or a web-UI merge. So
-> these land by manual merge, not auto-merge.
+Any PR touching `.github/workflows/` can't be merged by the auto-merge bot OR the
+local `gh` — the token scopes are `gist, read:org, repo` (no `workflow`). Use
+`gh auth refresh -h github.com -s workflow` then `gh pr merge`, or merge in the
+web UI. Non-workflow PRs (e.g. the `.gitattributes` follow-up, or #33) auto-merge
+fine on green.
