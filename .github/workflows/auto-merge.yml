@@ -36,7 +36,7 @@ jobs:
       github.event.workflow_run.actor.login == 'edmaceymacleod'
     steps:
       - name: Squash-merge owner PR and delete branch
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const run = context.payload.workflow_run;
