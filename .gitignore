@@ -30,6 +30,11 @@ htmlcov/
 venv/
 env/
 ENV/
+# Engine venv provisioned next to the extension (engine_runner step-3 location).
+# In-tree on a PUBLIC repo: carries absolute machine paths (pyvenv.cfg home,
+# Scripts/*.exe shebangs) -- never commit it.
+engine-venv/
+**/engine-venv/
 
 # ---------------------------------------------------------------------------
 # .NET / C# (revit-addin/)

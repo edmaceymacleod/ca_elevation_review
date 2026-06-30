@@ -62,7 +62,21 @@ userextensions` + `save_changes()`) *before* reloading. On load you get the
 **Standalone.** Drop `CaElevationReview.extension/` into
 `%APPDATA%\pyRevit\Extensions\` and reload.
 
-Either way, provision the engine venv and confirm `ca-elevation --version` resolves.
+Either way, provision the engine venv so the buttons can find it, and confirm
+`ca-elevation --version` resolves:
+
+- **Dev clone:** create a venv named `engine-venv/` next to the extension
+  (`CaElevationReview.extension/engine-venv/` -- the location
+  `engine_runner.locate_engine` probes at step 3) and `pip install` this repo's
+  `engine[report]` into it; the buttons then find it with no extra config.
+  (`engine-venv/` is git-ignored -- it holds machine-specific absolute paths and
+  must never be committed. A `scripts/provision-engine-venv.ps1` bootstrap that
+  automates this with interpreter discovery + a `ca-elevation --version` health
+  gate is a planned follow-up -- see ADR T2.3 / `docs/pyrevit-migration-plan.md`
+  Open item 4.)
+- **Standalone:** the copied extension has no repo `engine/` beside it -- set
+  **`CA_ELEVATION_ENGINE`** to a `ca-elevation` console script (or a venv `python`)
+  instead.
 
 ## Develop / test
 
