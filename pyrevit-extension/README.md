@@ -43,10 +43,26 @@ Revit API (function-local imports) and are validated on Ed's hardware.
 
 ## Install
 
-Drop `CaElevationReview.extension/` into your pyRevit extensions directory
-(`%APPDATA%\pyRevit\Extensions\`) or add this folder via pyRevit's extension
-manager, then reload pyRevit. Provision the engine venv and confirm
-`ca-elevation --version` resolves.
+**From a cloned repo (dev).** Register the folder that *contains* the
+`.extension` — pyRevit scans each search path **one level deep** for `*.extension`
+folders, so point it at `pyrevit-extension/`, not the repo root:
+
+```powershell
+pyrevit extensions paths add "<repo>\pyrevit-extension"
+```
+
+Then **start (or restart) Revit** — the path is scanned at pyRevit startup. A
+mid-session *Reload* does **not** reliably pick up a *newly* added search path
+(the running session can write its older config back over it); if you must load
+without a restart, add the path to the in-session config (`user_config.core.
+userextensions` + `save_changes()`) *before* reloading. On load you get the
+**CaElevationReview** ribbon tab → **Verify** panel → *Export Field Bundle* /
+*Import Captures* / *Open Report*. (Verified on Revit 2025 + pyRevit 6.1.0.)
+
+**Standalone.** Drop `CaElevationReview.extension/` into
+`%APPDATA%\pyRevit\Extensions\` and reload.
+
+Either way, provision the engine venv and confirm `ca-elevation --version` resolves.
 
 ## Develop / test
 
