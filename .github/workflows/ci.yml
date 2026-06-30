@@ -183,6 +183,20 @@ jobs:
       - name: swift test
         working-directory: ios-app
         run: swift test
+      # Foundation-only guard (the LOAD-BEARING portability check): the kit and
+      # its pure support targets (Fixtures, cek-emit) must never import
+      # UIKit/SwiftUI/ARKit/etc. A flat grep -- not a compile -- is what enforces
+      # the invariant: it catches a `#if canImport(ARKit)`-guarded import that a
+      # Linux/Windows compile silently skips, and it gates here on macOS where the
+      # toolchain always runs. Keep the dir list in sync with Package.swift's
+      # Foundation-only targets.
+      - name: Foundation-only import guard (kit)
+        working-directory: ios-app
+        run: |
+          if grep -rnE '^[[:space:]]*(@testable[[:space:]]+)?import[[:space:]]+(UIKit|SwiftUI|ARKit|RealityKit|CoreLocation|AVFoundation|CoreMotion|Vision|AppKit)([^A-Za-z0-9_]|$)' Sources/CaElevationKit Sources/CaElevationFixtures Sources/cek-emit; then
+            echo "::error::Foundation-only targets must not import UIKit/SwiftUI/ARKit/etc (offending import above)"; exit 1
+          fi
+          echo "Foundation-only targets import only Foundation / CaElevationKit."
       # SwiftLint is not preinstalled on current macos-latest images, so install
       # it explicitly -- otherwise the gating step below fails with
       # "swiftlint: command not found".
@@ -194,6 +208,31 @@ jobs:
       - name: SwiftLint (gating)
         working-directory: ios-app
         run: swiftlint lint --strict --config .swiftlint.yml
+
+  # --- iOS: build/test the pure kit on Linux (cross-toolchain portability) ----
+  #
+  # Compiles + tests CaElevationKit (and its pure support targets) on the
+  # official Swift Linux toolchain, in a pinned container so there is no
+  # third-party setup-swift action to drift. This is the cheap, stable
+  # cross-platform leg Package.swift already claims ("builds on Linux for CI"):
+  # non-Apple-framework leakage that happens to compile on macOS (e.g.
+  # SwiftUI/CoreLocation) fails to compile here. GATES alongside ios_kit.
+  ios_kit_linux:
+    name: CaElevationKit (linux)
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: swift:6.0
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift --version
+      - name: swift build
+        working-directory: ios-app
+        run: swift build
+      - name: swift test
+        working-directory: ios-app
+        run: swift test
 
   # --- iOS: build the actual App target so actool compiles the asset catalog --
   #
@@ -318,7 +357,7 @@ jobs:
   all-green:
     name: all-green
     if: always()
-    needs: [changes, engine, pyrevit_floor, pyrevit_engine, schema, ios_kit, ios_app, xlang_schema, revit, secret_scan]
+    needs: [changes, engine, pyrevit_floor, pyrevit_engine, schema, ios_kit, ios_kit_linux, ios_app, xlang_schema, revit, secret_scan]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -331,6 +370,7 @@ jobs:
             [pyrevit_engine]="${{ needs.pyrevit_engine.result }}"
             [schema]="${{ needs.schema.result }}"
             [ios_kit]="${{ needs.ios_kit.result }}"
+            [ios_kit_linux]="${{ needs.ios_kit_linux.result }}"
             [ios_app]="${{ needs.ios_app.result }}"
             [xlang_schema]="${{ needs.xlang_schema.result }}"
             [secret_scan]="${{ needs.secret_scan.result }}"
