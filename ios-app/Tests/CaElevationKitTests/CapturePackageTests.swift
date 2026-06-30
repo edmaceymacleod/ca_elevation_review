@@ -77,4 +77,13 @@ final class CapturePackageTests: XCTestCase {
             }
         }
     }
+
+    // A payload that OMITS confidence must decode to the schema default
+    // (.medium), matching the engine — not a silent nil. Regression guard for
+    // the kit<->engine default-divergence fix (T1.1).
+    func testPinConfidenceDefaultsToMediumOnDecode() throws {
+        let json = #"{"x":1,"y":2,"heading":90}"#
+        let pin = try BundleIO.makeDecoder().decode(Pin.self, from: Data(json.utf8))
+        XCTAssertEqual(pin.confidence, .medium)
+    }
 }

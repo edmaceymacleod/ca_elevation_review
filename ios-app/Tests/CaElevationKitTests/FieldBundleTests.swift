@@ -214,6 +214,14 @@ final class FieldBundleTests: XCTestCase {
         }
     }
 
+    // A device orientation that OMITS up_axis must decode to the schema default
+    // (.up), matching the engine — not a silent nil. Regression guard (T1.1).
+    func testOrientationUpAxisDefaultsToUpOnDecode() throws {
+        let json = #"{"facing_angle":90}"#
+        let orientation = try BundleIO.makeDecoder().decode(Orientation.self, from: Data(json.utf8))
+        XCTAssertEqual(orientation.upAxis, .up)
+    }
+
     private func makeTempDir() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("cek-test-\(UUID().uuidString)")

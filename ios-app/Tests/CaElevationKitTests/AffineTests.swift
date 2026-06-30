@@ -60,4 +60,19 @@ final class AffineTests: XCTestCase {
         XCTAssertTrue(Affine(coefficients: [1, 0, 0, 0, 1, 0]).isValid)
         XCTAssertFalse(Affine(coefficients: [1, 0, 0]).isValid)
     }
+
+    func testDeterminantAtEpsilonBoundaryIsInvertible() {
+        // det == 1e-12 exactly: the engine threshold is `abs(det) >= 1e-12`,
+        // so the boundary value is invertible (mirrors geometry.py).
+        let affine = Affine(a: 1e-12, b: 0, c: 0, d: 0, e: 1, f: 0)
+        XCTAssertEqual(affine.determinant, 1e-12, accuracy: 1e-24)
+        XCTAssertNotNil(affine.pixel(fromModelX: 1, 1))
+    }
+
+    func testDeterminantJustBelowEpsilonIsNotInvertible() {
+        // det == 9e-13 < 1e-12: just under the boundary, rejected.
+        let affine = Affine(a: 9e-13, b: 0, c: 0, d: 0, e: 1, f: 0)
+        XCTAssertLessThan(abs(affine.determinant), 1e-12)
+        XCTAssertNil(affine.pixel(fromModelX: 1, 1))
+    }
 }

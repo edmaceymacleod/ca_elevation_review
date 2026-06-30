@@ -76,6 +76,7 @@ public enum BundleIO {
         }
         let data = try Data(contentsOf: manifestURL)
         let manifest = try makeDecoder().decode(SpecManifest.self, from: data)
+        try manifest.validate()
 
         if validateReferencedFiles {
             for level in manifest.levels {
@@ -177,7 +178,9 @@ public enum BundleIO {
             throw BundleIOError.captureNotFound(path: captureURL.path)
         }
         let data = try Data(contentsOf: captureURL)
-        return try makeDecoder().decode(CapturePackage.self, from: data)
+        let package = try makeDecoder().decode(CapturePackage.self, from: data)
+        try package.validate()
+        return package
     }
 
     /// Stage a media payload (RGB JPEG, raw depth, point cloud) into a package

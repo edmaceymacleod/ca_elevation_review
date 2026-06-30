@@ -56,4 +56,18 @@ final class JSONValueTests: XCTestCase {
             return XCTFail("expected array, got \(value)")
         }
     }
+
+    func testEncodeDecodeRoundTripAllCases() throws {
+        let value: JSONValue = .object([
+            "nul": .null,
+            "flag": .bool(true),
+            "num": .number(3.5),
+            "str": .string("hi"),
+            "arr": .array([.number(1), .string("x"), .bool(false)]),
+            "nested": .object(["k": .array([.null])])
+        ])
+        let data = try BundleIO.makeEncoder().encode(value)
+        let decoded = try BundleIO.makeDecoder().decode(JSONValue.self, from: data)
+        XCTAssertEqual(decoded, value)
+    }
 }

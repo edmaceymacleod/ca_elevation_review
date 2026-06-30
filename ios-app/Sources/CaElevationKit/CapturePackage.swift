@@ -165,13 +165,29 @@ public struct Pin: Codable, Equatable, Sendable {
     public var y: Double
     /// Camera heading in plan, degrees, 0 = +X CCW.
     public var heading: Double
-    public var confidence: Confidence?
+    /// Defaults to `.medium`, mirroring the engine (`Pin.confidence: str =
+    /// "medium"`) and the schema's `"default": "medium"`. A payload that omits
+    /// it decodes to `.medium` on both sides rather than silently diverging
+    /// (kit `nil` vs engine `"medium"`); the encoder always emits it.
+    public var confidence: Confidence
 
-    public init(x: Double, y: Double, heading: Double, confidence: Confidence? = nil) {
+    public init(x: Double, y: Double, heading: Double, confidence: Confidence = .medium) {
         self.x = x
         self.y = y
         self.heading = heading
         self.confidence = confidence
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case x, y, heading, confidence
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        x = try container.decode(Double.self, forKey: .x)
+        y = try container.decode(Double.self, forKey: .y)
+        heading = try container.decode(Double.self, forKey: .heading)
+        confidence = try container.decodeIfPresent(Confidence.self, forKey: .confidence) ?? .medium
     }
 }
 
