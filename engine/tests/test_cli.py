@@ -29,9 +29,19 @@ def test_run_writes_report_and_exits_zero(tmp_path, f01_manifest_path, f01_captu
     assert code == 0
     report = json.loads((out / "verdict_report.json").read_text())
     assert report["summary"]["total"] == 5
-    # Default format is PDF (reportlab is a CI/[report] dependency).
-    assert (out / "report.pdf").exists()
-    assert (out / "report.pdf").read_bytes().startswith(b"%PDF")
+    # Default format is PDF, but the CLI degrades to a self-contained HTML report
+    # when the optional reportlab backend is absent (the engine_no_report CI leg).
+    import importlib.util
+
+    if importlib.util.find_spec("reportlab") is not None:
+        assert (out / "report.pdf").exists()
+        assert (out / "report.pdf").read_bytes().startswith(b"%PDF")
+    else:
+        assert (out / "report.html").exists()
+        assert not (out / "report.pdf").exists()
+        assert (
+            (out / "report.html").read_text(encoding="utf-8").lstrip().startswith("<!DOCTYPE html>")
+        )
     captured = capsys.readouterr()
     assert "PASS" in captured.out  # text summary
 
