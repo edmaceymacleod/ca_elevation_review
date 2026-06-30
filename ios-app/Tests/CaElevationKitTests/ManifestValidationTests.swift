@@ -101,4 +101,54 @@ final class ManifestValidationTests: XCTestCase {
     func testValidSpecManifestPassesValidation() throws {
         XCTAssertNoThrow(try Fixtures.specManifest().validate())
     }
+
+    // MARK: Codable-enforced enums (manifest side)
+
+    func testOrientationBadUpAxisEnumThrowsDecodingError() {
+        let json = #"{"up_axis":"sideways"}"#
+        XCTAssertThrowsError(
+            try BundleIO.makeDecoder().decode(Orientation.self, from: Data(json.utf8))
+        ) { error in
+            XCTAssertTrue(error is DecodingError, "expected DecodingError, got \(error)")
+        }
+    }
+
+    // project.units is enum ["feet","meters"]; an out-of-set value (British
+    // spelling) is rejected by Codable exactly like the up_axis/confidence enums.
+    func testProjectUnitsBadEnumThrowsDecodingError() {
+        let json = #"{"id":"p","name":"n","units":"metres"}"#
+        XCTAssertThrowsError(
+            try BundleIO.makeDecoder().decode(Project.self, from: Data(json.utf8))
+        ) { error in
+            XCTAssertTrue(error is DecodingError, "expected DecodingError, got \(error)")
+        }
+    }
+
+    // MARK: Minimal round-trip (every optional nil; defaults applied)
+
+    func testMinimalSpecManifestRoundTrips() throws {
+        let manifest = SpecManifest(
+            schemaVersion: "1.0.0",
+            project: Project(id: "proj-001", name: "Demo", units: .feet),
+            levels: [
+                Level(
+                    id: "L1",
+                    name: "Level 1",
+                    elevation: 0,
+                    floorplan: Floorplan(
+                        image: "plans/L1.png",
+                        widthPx: 1,
+                        heightPx: 1,
+                        pixelToModel: [1, 0, 0, 0, 1, 0]
+                    )
+                )
+            ]
+        )
+        XCTAssertNoThrow(try manifest.validate())
+
+        let data = try BundleIO.makeEncoder().encode(manifest)
+        let decoded = try BundleIO.makeDecoder().decode(SpecManifest.self, from: data)
+        XCTAssertEqual(decoded, manifest)
+        XCTAssertEqual(decoded.devices, [])
+    }
 }

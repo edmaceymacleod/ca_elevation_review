@@ -194,4 +194,40 @@ final class CaptureValidationTests: XCTestCase {
     func testValidCapturePackagePassesValidation() throws {
         XCTAssertNoThrow(try Fixtures.capturePackage().validate())
     }
+
+    // MARK: Codable-enforced enum (capture side)
+
+    func testPinBadConfidenceEnumThrowsDecodingError() {
+        let json = #"{"x":1,"y":2,"heading":0,"confidence":"bogus"}"#
+        XCTAssertThrowsError(
+            try BundleIO.makeDecoder().decode(Pin.self, from: Data(json.utf8))
+        ) { error in
+            XCTAssertTrue(error is DecodingError, "expected DecodingError, got \(error)")
+        }
+    }
+
+    // MARK: Minimal round-trip (every optional nil; defaults applied)
+
+    func testMinimalCapturePackageRoundTrips() throws {
+        let package = CapturePackage(
+            schemaVersion: "1.0.0",
+            projectId: "proj-001",
+            shots: [
+                Shot(
+                    id: "s1",
+                    levelId: "L1",
+                    rgbImage: "shots/s1/rgb.jpg",
+                    intrinsics: Intrinsics(fx: 1, fy: 1, cx: 0, cy: 0, width: 1, height: 1),
+                    pose: Array(repeating: 0.0, count: 16),
+                    pin: Pin(x: 0, y: 0, heading: 0)
+                )
+            ]
+        )
+        XCTAssertNoThrow(try package.validate())
+
+        let data = try BundleIO.makeEncoder().encode(package)
+        let decoded = try BundleIO.makeDecoder().decode(CapturePackage.self, from: data)
+        XCTAssertEqual(decoded, package)
+        XCTAssertEqual(decoded.shots[0].pin.confidence, .medium)
+    }
 }
