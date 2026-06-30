@@ -15,8 +15,10 @@ import pytest
 from ca_elevation_revit import config, engine_runner
 from ca_elevation_revit.engine_runner import (
     EngineCommand,
+    EngineLocation,
     EngineNotFoundError,
     EngineStatus,
+    can_locate_engine,
     classify_exit,
     locate_engine,
     wrap,
@@ -93,6 +95,124 @@ def test_path_fallback_returned_unprobed():
     cmd = locate_engine(platform="linux", exists=lambda p: False, extension_root="/ext", env={})
     assert cmd.executable == config.CONSOLE_SCRIPT
     assert cmd.prefix_args == []
+
+
+# --- can_locate_engine() ------------------------------------------------- #
+def test_can_locate_engine_explicit_existing_is_found():
+    loc = can_locate_engine("/x/ca-elevation", exists=lambda p: True)
+    assert loc.found is True
+    assert loc.reason is None
+    assert loc.command is not None
+    assert loc.command.executable == "/x/ca-elevation"
+
+
+def test_can_locate_engine_env_existing_is_found():
+    # The actual production mechanism: CA_ELEVATION_ENGINE points at a real engine.
+    loc = can_locate_engine(
+        env={config.ENGINE_ENV_VAR: "/real/ca-elevation"}, exists=lambda p: True
+    )
+    assert isinstance(loc, EngineLocation)
+    assert loc.found is True
+    assert loc.reason is None
+    assert loc.command.executable == "/real/ca-elevation"
+
+
+def test_can_locate_engine_explicit_missing_is_not_found_with_reason():
+    loc = can_locate_engine("/nope/ca-elevation", exists=lambda p: False)
+    assert loc.found is False
+    assert loc.command is None
+    # surfaces the offending path AND a remediation hint
+    assert "/nope/ca-elevation" in loc.reason
+    assert config.ENGINE_ENV_VAR in loc.reason
+    assert config.BUNDLED_VENV_DIRNAME in loc.reason
+
+
+def test_can_locate_engine_env_missing_is_not_found():
+    loc = can_locate_engine(env={config.ENGINE_ENV_VAR: "/nope"}, exists=lambda p: False)
+    assert loc.found is False
+    assert config.ENGINE_ENV_VAR in loc.reason
+
+
+def test_can_locate_engine_bundled_is_found_and_returns_command():
+    root = "/ext"
+    exe = os.path.join(root, "engine-venv", "bin", "ca-elevation")
+    loc = can_locate_engine(
+        platform="linux",
+        exists=lambda p: p == exe,
+        extension_root=root,
+        env={},
+    )
+    assert loc.found is True
+    assert loc.command.executable == exe
+    assert loc.command.prefix_args == []
+
+
+def test_can_locate_engine_bundled_python_module_form_is_found():
+    # Console script absent, only the venv python present -> module form, and the
+    # PATH probe must NOT fire (executable is a python path, not CONSOLE_SCRIPT).
+    root = "/ext"
+    py = os.path.join(root, "engine-venv", "bin", "python")
+
+    def _no_path(name):
+        raise AssertionError("which must not be consulted when a concrete path resolved")
+
+    loc = can_locate_engine(
+        platform="linux",
+        exists=lambda p: p == py,
+        extension_root=root,
+        env={},
+        which=_no_path,
+    )
+    assert loc.found is True
+    assert loc.command.executable == py
+    assert loc.command.prefix_args == ["-m", "ca_elevation_engine.cli"]
+
+
+def test_can_locate_engine_concrete_path_does_not_probe_path():
+    # Short-circuit contract: a resolved concrete path must never consult `which`.
+    def _no_path(name):
+        raise AssertionError("which must not be consulted when a concrete path resolved")
+
+    loc = can_locate_engine("/x/ca-elevation", exists=lambda p: True, which=_no_path)
+    assert loc.found is True
+    assert loc.command.executable == "/x/ca-elevation"
+
+
+def test_can_locate_engine_path_fallback_present_is_found():
+    # Nothing on disk, but ca-elevation resolves on PATH -> found. Capture the
+    # probed name so a wrong-name probe would fail the test.
+    probed = []
+
+    def _which(name):
+        probed.append(name)
+        return "/usr/local/bin/ca-elevation"
+
+    loc = can_locate_engine(
+        platform="linux",
+        exists=lambda p: False,
+        extension_root="/ext",
+        env={},
+        which=_which,
+    )
+    assert loc.found is True
+    assert loc.command.executable == config.CONSOLE_SCRIPT
+    assert probed == [config.CONSOLE_SCRIPT]
+
+
+def test_can_locate_engine_path_fallback_absent_is_not_found_with_remediation():
+    # Nothing on disk AND nothing on PATH -> the silent-no-colours case is caught.
+    loc = can_locate_engine(
+        platform="linux",
+        exists=lambda p: False,
+        extension_root="/ext",
+        env={},
+        which=lambda name: None,
+    )
+    assert loc.found is False
+    assert loc.command is None
+    assert config.ENGINE_ENV_VAR in loc.reason
+    assert config.BUNDLED_VENV_DIRNAME in loc.reason
+    assert "PATH" in loc.reason
 
 
 # --- run_engine() (mocked subprocess) ------------------------------------ #

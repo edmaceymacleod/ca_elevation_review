@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -130,6 +131,70 @@ def locate_engine(
 
     # 4: PATH fallback -- returned UNPROBED.
     return EngineCommand(config.CONSOLE_SCRIPT, [])
+
+
+@dataclass
+class EngineLocation:
+    """Result of a non-raising engine pre-flight probe.
+
+    ``found`` is True when an engine executable was positively located (explicit
+    path, env var, bundled venv, or a ``ca-elevation`` resolvable on PATH).
+    ``command`` is the resolved :class:`EngineCommand` when found -- callers may
+    reuse it for ``run_engine``/``validate`` to avoid re-resolving -- else None.
+    ``reason`` is a ready-to-display remediation message when not found.
+    """
+
+    found: bool
+    command: Optional[EngineCommand]
+    reason: Optional[str] = None
+
+
+_REMEDIATION = (
+    "The CA Elevation engine could not be located. Fix one of:\n"
+    f"  - set the {config.ENGINE_ENV_VAR} environment variable to the engine executable "
+    "(ca-elevation[.exe] or the venv python), or\n"
+    f"  - install the bundled '{config.BUNDLED_VENV_DIRNAME}' next to the extension, or\n"
+    f"  - put '{config.CONSOLE_SCRIPT}' on your PATH."
+)
+
+
+def can_locate_engine(
+    explicit: Optional[str] = None,
+    *,
+    env: Optional[dict] = None,
+    platform: Optional[str] = None,
+    exists: Callable[[str], bool] = os.path.exists,
+    extension_root: Optional[str] = None,
+    which: Callable[[str], Optional[str]] = shutil.which,
+) -> EngineLocation:
+    """Non-raising pre-flight: can an engine actually be located right now?
+
+    Wraps :func:`locate_engine` (identical resolution order) but never raises
+    and, crucially, *probes the PATH fallback* via ``which`` -- so a
+    misconfigured or absent engine is reported as ``found=False`` with a
+    remediation ``reason`` instead of silently returning an unrunnable command
+    (the "success with no colours" failure mode). ``which`` is injectable so the
+    PATH branch is unit-tested without a real engine installed.
+    """
+    try:
+        cmd = locate_engine(
+            explicit,
+            env=env,
+            platform=platform,
+            exists=exists,
+            extension_root=extension_root,
+        )
+    except EngineNotFoundError as exc:
+        reason = f"{exc}\n\n{_REMEDIATION}"
+        return EngineLocation(found=False, command=None, reason=reason)
+
+    # The PATH fallback is the ONLY branch that returns the bare console-script
+    # name; every other branch returns an absolute, existence-probed path. Probe
+    # it for real so an absent ca-elevation is caught here, not at subprocess time.
+    if cmd.executable == config.CONSOLE_SCRIPT and which(config.CONSOLE_SCRIPT) is None:
+        return EngineLocation(found=False, command=None, reason=_REMEDIATION)
+
+    return EngineLocation(found=True, command=cmd, reason=None)
 
 
 def _default_extension_root() -> str:
