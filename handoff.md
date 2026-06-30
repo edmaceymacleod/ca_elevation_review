@@ -30,30 +30,56 @@ orientation:
   short-name expansion in `resolvingSymlinksInPath` vs a not-yet-created tail);
   the informational Windows leg is what surfaced it. iOS (production) unaffected.
 
+## Just landed — 2026-06-30 (local SwiftLint parity)
+
+- **`claude/win-swiftlint-parity` (PR pending)** — root `.gitattributes`
+  (`* text=auto eol=lf` + binary marks) forces LF on checkout, overriding
+  Git-for-Windows `core.autocrlf=true`. On a CRLF tree SwiftLint counted CR+LF as
+  two line breaks (doubling line counts), throwing 253 false
+  `comma`/`trailing_newline`/`file_length` errors; on LF it is clean = exact
+  parity with the gating macOS CI. Plus `ios-app/scripts/win-swiftlint.ps1` (PC
+  mirror of the CI SwiftLint gate: USER-PATH prepend for sourcekitd + swiftlint,
+  **no** Enter-VsDevShell — lint never links — fail-closed on non-zero exit AND
+  zero-files). Verified on the PC: green path 0 violations/30 files, red path
+  throws on an injected violation. The index was already 100% LF, so
+  `git add --renormalize .` is a no-op and the diff touches no workflow file →
+  auto-merges on green. The one-time working-tree CRLF→LF flip recipe lives in
+  `ios-app/CLAUDE.md` "Platform gotchas".
+
+## Action — Dependabot #29 (TRIAGED: safe to merge; needs a MANUAL merge)
+
+`actions/github-script@v7→v9`, sole use `auto-merge.yml`. Reviewed adversarially:
+the script uses only the injected `github`/`context`/`core` (no
+`require('@actions/github')`, never declares `getOctokit`), so none of v9's
+breaking changes fire; the node24 runtime is on `ubuntu-latest`. House style
+floats first-party `actions/*` on major, so `@v9` fits. **Merge manually** — it
+touches `.github/workflows/`, so the bot won't (dependabot ≠ owner) and local `gh`
+lacks `workflow` scope: `gh auth refresh -h github.com -s workflow && gh pr merge 29 --squash --delete-branch`,
+or the web UI. The CI-green on #29 is vacuous (auto-merge.yml is in no
+paths-filter, so every component job skips). Post-merge smoke check: confirm the
+NEXT owner PR still auto-merges (squash + branch-delete) — `workflow_run` only
+runs the default-branch copy, so #29 cannot exercise itself.
+
 ## Next steps
 
-1. **Local-SwiftLint parity (small; auto-merges — touches no workflow file).**
-   - Add **`.gitattributes`** forcing LF for sources. The repo has none, so Windows
-     checkouts are CRLF and `swiftlint` throws false `comma` / `trailing_newline`
-     on EVERY file (vs CI's LF). After adding it run `git add --renormalize .` so
-     the working tree flips to LF.
-   - Add **`ios-app/scripts/win-swiftlint.ps1`** mirroring `win-kit-test.ps1`:
-     prepend the installer USER PATH (so `sourcekitdInProc.dll` loads) + set
-     `SDKROOT`, then `swiftlint lint --strict --config .swiftlint.yml`.
-   - `swiftlint.exe` **0.65.0** is already installed at
-     `C:\Users\ed.macey-macleod\tools\swiftlint` (on the USER PATH). It needs the
-     Swift toolchain on PATH (SourceKit) and LF line endings to match CI.
-2. **(Optional) Promote the Windows leg to gating.** The kit already builds green
+1. **(Optional) Promote the Windows leg to gating.** The kit already builds green
    on Windows; keep it informational until the *setup* (toolchain download /
    setup-swift / msvc-dev-cmd) is observed stable over several runs. To promote:
    add `ios_kit_windows` to `all-green`'s `needs:` **and** R-map in ONE commit and
    drop `continue-on-error`. (Narrow its trigger to `ios-app/**`, excluding
    `ci.yml`, so routine CI edits aren't gated on Swift-on-Windows availability.)
+2. **(Optional) Pin SwiftLint for true version parity.** CI installs swiftlint via
+   `brew install swiftlint` (floats to latest); `win-swiftlint.ps1` uses the PATH
+   swiftlint (the PC has 0.65.0). Same result today, but a future brew bump could
+   flag what local passes (rule-set drift) — the one parity hole `.gitattributes`
+   doesn't close. To fix: pin a fixed swiftlint release in `ci.yml` (touches a
+   workflow file → needs `workflow` scope to merge) and record the expected
+   version next to the script. Low priority.
 
 ## Gotcha — merging CI PRs (verified 2026-06-30)
 
 Any PR touching `.github/workflows/` can't be merged by the auto-merge bot OR the
 local `gh` — the token scopes are `gist, read:org, repo` (no `workflow`). Use
 `gh auth refresh -h github.com -s workflow` then `gh pr merge`, or merge in the
-web UI. Non-workflow PRs (e.g. the `.gitattributes` follow-up, or #33) auto-merge
-fine on green.
+web UI. Non-workflow PRs (e.g. this `.gitattributes`/`win-swiftlint.ps1` change,
+or #33) auto-merge fine on green.

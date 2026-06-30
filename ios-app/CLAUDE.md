@@ -83,6 +83,20 @@ A living list. When a platform-specific surprise costs you time, add it here.
   `resolvingBookmarkData(options: [])`. `.withSecurityScope` and
   `com.apple.security.files.bookmarks.*` are **macOS App Sandbox** concepts;
   `.withSecurityScope` throws on iOS. Don't copy macOS sample code (`RootFolderStore`).
+- **CRLF checkout breaks local SwiftLint on Windows** — Git for Windows defaults
+  to `core.autocrlf=true`, so a Windows checkout writes the LF-stored sources as
+  CRLF on disk. SwiftLint then counts CR and LF as *separate* line breaks —
+  doubling every file's line count — and fires false `comma` / `trailing_newline`
+  / `file_length` violations on every Swift file, while CI (macOS/Linux, LF) stays
+  clean. The root `.gitattributes` (`eol=lf`) fixes it: **a fresh clone checks out
+  LF automatically — no action needed.** Only a working tree that *predates*
+  `.gitattributes` keeps its CRLF bytes; flip it **once** (from the repo root, on a
+  clean tree) with `git ls-files -z | xargs -0 rm -f && git checkout -- .` — it
+  deletes and re-checks-out every tracked file as LF, leaving the index and
+  untracked files alone. `git checkout -- .` / `git checkout-index -f` alone do
+  **not** work: the stat cache makes git skip the rewrite. Verify with
+  `git ls-files --eol` (no `w/crlf`). Lint with the CI-parity gate:
+  `pwsh -File ios-app/scripts/win-swiftlint.ps1`.
 
 ## Architecture (do not blur this line)
 

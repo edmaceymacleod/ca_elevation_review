@@ -5,6 +5,8 @@
 # .github/workflows/ci.yml): the tree is kept clean, so any violation fails the
 # build (CI runs `swiftlint lint --strict`). Run locally before pushing with:
 #   cd ios-app && swiftlint lint --strict --config .swiftlint.yml
+# On Windows: pwsh -File scripts/win-swiftlint.ps1 (see ios-app/CLAUDE.md
+# "Platform gotchas" — needs LF line endings to match CI).
 included:
   - Sources
   - Tests
