@@ -183,6 +183,17 @@ def test_f05_distinctions(fixtures_dir):
     assert r["D-PASS"]["verdict"] == "pass"
 
 
+def test_f08_type_heuristic(fixtures_dir):
+    r = _by_id(_golden(fixtures_dir, "f08_type_heuristic_verdict_report.json"))
+    # detected_type was a RAW unscored hint ("illuminated exit sign"); the engine
+    # heuristic canonicalized it to "Exit Sign" @ 0.7 -> TYPE_MISMATCH.
+    assert r["D-HEUR-TYPE"]["verdict"] == "type_mismatch"
+    assert r["D-HEUR-TYPE"]["confidence"] == 0.7  # SUBSTRING_MATCH_CONFIDENCE
+    assert any("Exit Sign" in n for n in r["D-HEUR-TYPE"]["notes"])
+    # D-EXIT only seeds the family catalog; its own match carries no type signal.
+    assert r["D-EXIT"]["verdict"] == "pass"
+
+
 def test_f06_wall_all_pass_and_decoy(fixtures_dir):
     g = _golden(fixtures_dir, "f06_device_wall_verdict_report.json")
     assert all(r["verdict"] == "pass" for r in g["device_results"])

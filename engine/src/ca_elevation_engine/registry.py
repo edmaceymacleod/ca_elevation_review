@@ -66,6 +66,7 @@ SCENARIO_GOLDENS: dict[str, str] = {
     "f05_distinctions": "f05_distinctions_verdict_report.json",
     "f06_device_wall": "f06_device_wall_verdict_report.json",
     "f07_empty_manifest": "f07_empty_manifest_verdict_report.json",
+    "f08_type_heuristic": "f08_type_heuristic_verdict_report.json",
 }
 # Payload file stems are not derivable from scenario ids (f01 is the historical
 # exception); bind them explicitly. Identity for f02-f07.
@@ -77,6 +78,7 @@ SCENARIO_PAYLOAD_STEMS: dict[str, str] = {
     "f05_distinctions": "f05_distinctions",
     "f06_device_wall": "f06_device_wall",
     "f07_empty_manifest": "f07_empty_manifest",
+    "f08_type_heuristic": "f08_type_heuristic",
 }
 SCENARIOS: tuple[str, ...] = tuple(SCENARIO_GOLDENS)
 

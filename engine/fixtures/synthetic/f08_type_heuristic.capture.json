@@ -1,0 +1,72 @@
+{
+  "schema_version": "1.0.0",
+  "project_id": "demo-type-heuristic-08",
+  "device_model": "iPhone 15 Pro",
+  "app_version": "0.1.0",
+  "shots": [
+    {
+      "id": "S1",
+      "level_id": "L1",
+      "elevation_id": "E-NORTH",
+      "rgb_image": "S1.jpg",
+      "intrinsics": {
+        "fx": 1000.0,
+        "fy": 1000.0,
+        "cx": 640.0,
+        "cy": 360.0,
+        "width": 1280,
+        "height": 720
+      },
+      "pose": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "pin": {
+        "x": 0.0,
+        "y": 0.0,
+        "heading": 0.0,
+        "confidence": "high"
+      },
+      "observations": [
+        {
+          "position": {
+            "x": 7.5,
+            "y": 1.0,
+            "z": 4.0
+          },
+          "mounting_height": 4.0,
+          "facing_angle": 0.0,
+          "detected_type": "illuminated exit sign"
+        },
+        {
+          "position": {
+            "x": 8.0,
+            "y": 3.0,
+            "z": 4.0
+          },
+          "mounting_height": 4.0,
+          "facing_angle": 0.0
+        }
+      ],
+      "depth_map": "S1_depth.bin",
+      "depth_size": [
+        192,
+        256
+      ]
+    }
+  ]
+}
