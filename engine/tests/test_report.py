@@ -504,6 +504,40 @@ def test_pipeline_falls_back_to_html_without_reportlab(tmp_path, monkeypatch):
     assert any("Falling back to HTML" in w for w in result.warnings)
 
 
+@pytest.mark.unit
+def test_pipeline_real_html_fallback_when_reportlab_absent(tmp_path):
+    # Genuine-absence companion to the monkeypatched test above. With reportlab
+    # ACTUALLY uninstalled, the real `import reportlab` failure inside
+    # report.pdf._require_reportlab is exercised end-to-end -- not simulated via
+    # monkeypatch. Skipped where reportlab is present; this is the test the
+    # `engine_no_report` CI leg exists to run (engine installed without [report]).
+    import importlib.util
+
+    if importlib.util.find_spec("reportlab") is not None:
+        pytest.skip(
+            "reportlab present; genuine-absence fallback runs in the engine_no_report CI leg"
+        )
+
+    from ca_elevation_engine.pipeline import run_pipeline
+
+    result = run_pipeline(
+        _manifest(),
+        _capture(),
+        out_dir=str(tmp_path),
+        report_format="pdf",
+        generated_at="2026-06-28T12:00:00Z",
+    )
+    # Asked for pdf, got html -- the real fallback fired, with no pdf produced.
+    assert "html" in result.written
+    assert "pdf" not in result.written
+    from pathlib import Path
+
+    html_path = result.written["html"]
+    assert Path(html_path).exists()
+    assert Path(html_path).read_text(encoding="utf-8").lstrip().startswith("<!DOCTYPE html>")
+    assert any("Falling back to HTML" in w for w in result.warnings)
+
+
 # --------------------------------------------------------------------------- #
 # Anti-drift guard (ranking only) (§6.7)
 # --------------------------------------------------------------------------- #
