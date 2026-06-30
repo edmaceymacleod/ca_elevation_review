@@ -15,6 +15,9 @@
 
 import SwiftUI
 import CaElevationKit
+#if canImport(OSLog)
+import OSLog
+#endif
 
 struct PlacePinView: View {
     let level: Level
@@ -29,6 +32,10 @@ struct PlacePinView: View {
     @State private var heading: Double
     @State private var confidence: Pin.Confidence = .medium
     @State private var elevationId: String?
+    /// User-facing staging error (e.g. disk full, path-escape rejection). When
+    /// set, an alert is shown and the shot is NOT recorded or dismissed, so a
+    /// failed capture never looks successful. Mirrors `CoverageView.exportError`.
+    @State private var saveError: String?
 
     init(level: Level, frame: CapturedFrame) {
         self.level = level
@@ -57,6 +64,11 @@ struct PlacePinView: View {
                 Button("Confirm") { confirm() }
                     .disabled(pinPixel == nil)
             }
+        }
+        .alert("Couldn't save shot", isPresented: .constant(saveError != nil)) {
+            Button("OK") { saveError = nil }
+        } message: {
+            Text(saveError ?? "")
         }
     }
 
@@ -93,6 +105,13 @@ struct PlacePinView: View {
                 let model = affine.modelXY(fromPixel: Double(pinPixel.x), Double(pinPixel.y))
                 Text(String(format: "Model XY: (%.2f, %.2f)", model.x, model.y))
                     .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            } else if pinPixel != nil {
+                // Pin placed, but the level's affine is missing/singular, so a
+                // model-XY readout would be meaningless. The exported pin pixel is
+                // still valid (the engine recomputes model XY from it).
+                Text("Plan not georeferenced; model XY unavailable.")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
                 Text("Tap the plan to mark your position.")
@@ -133,7 +152,13 @@ struct PlacePinView: View {
     // MARK: - Derived
 
     private var currentAffine: Affine? {
-        level.floorplan.affine.isValid ? level.floorplan.affine : nil
+        let affine = level.floorplan.affine
+        // Require a non-singular affine before showing a model-XY readout: a
+        // degenerate `pixel_to_model` passes `isValid` (count only) but the
+        // engine's inverse rejects |det| < 1e-12, so a forward map would display
+        // a confident-looking but untrustworthy coordinate.
+        guard affine.isValid, abs(affine.determinant) >= 1e-12 else { return nil }
+        return affine
     }
 
     private var elevationIds: [String] {
@@ -184,8 +209,13 @@ struct PlacePinView: View {
             session.add(shot)
             dismiss()
         } catch {
-            // TODO: surface staging errors to the user.
-            assertionFailure("failed to export shot: \(error)")
+            // Surface to the user and log; do NOT dismiss — losing a hard-to-
+            // retake capture silently (assertionFailure is a no-op in release)
+            // is worse than making the operator retry. See CLAUDE.md rule 4.
+            #if canImport(OSLog)
+            Log.capture.error("Failed to export shot: \(error.localizedDescription, privacy: .public)")
+            #endif
+            saveError = "Couldn't save this shot: \(error.localizedDescription). Try again."
         }
     }
 }

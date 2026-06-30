@@ -124,11 +124,17 @@ struct CoverageView: View {
         let captured: Bool
     }
 
+    /// Sentinel bucket key for devices/shots without an `elevationId`. Both the
+    /// device grouping and the captured-id set use it so an untagged shot marks
+    /// the untagged bucket as captured (otherwise `compactMap` drops nil shots
+    /// and that bucket would stay unchecked even after being shot).
+    private static let untaggedKey = "(untagged)"
+
     private var expectedElevations: [ExpectedElevation] {
         guard let manifest = session.manifest else { return [] }
         let devices = manifest.devices.filter { $0.levelId == level.id }
-        let capturedIds = Set(shotsForLevel.compactMap { $0.elevationId })
-        let grouped = Dictionary(grouping: devices) { $0.elevationId ?? "(untagged)" }
+        let capturedIds = Set(shotsForLevel.map { $0.elevationId ?? Self.untaggedKey })
+        let grouped = Dictionary(grouping: devices) { $0.elevationId ?? Self.untaggedKey }
         return grouped
             .map {
                 ExpectedElevation(

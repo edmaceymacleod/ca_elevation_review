@@ -82,8 +82,15 @@ def _require_positive_int(value, what):  # noqa: ANN001
     # bool is an int subclass: reject it explicitly so True/False cannot pass.
     # Do NOT reject integer-valued floats here -- the schema accepts 1000.0 for
     # "type: integer", so rejecting a float instance would make the builder
-    # STRICTER than the schema (forbidden -- see the subset invariant).
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+    # STRICTER than the schema (forbidden -- see the subset invariant). Accept a
+    # finite, integer-valued number (int or e.g. 1000.0) that is > 0.
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value <= 0
+        or not float(value).is_integer()
+    ):
         raise ManifestBuildError(f"{what} must be a positive integer, got {value!r}")
 
 

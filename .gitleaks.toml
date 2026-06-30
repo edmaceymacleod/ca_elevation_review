@@ -11,9 +11,6 @@ useDefault = true
 
 [allowlist]
 description = "Repo-specific false-positive allowlist"
-# The regexes below describe the surrounding LINE, not the matched secret value,
-# so they only suppress a finding when the offending line contains these tokens.
-regexTarget = "line"
 
 paths = [
   # Test fixtures and golden reports contain synthetic ids/poses, not secrets.
@@ -23,8 +20,12 @@ paths = [
   '''(^|/)(bin|obj|\.build|DerivedData|dist|build)/''',
 ]
 
+regexTarget = "line"
+
 regexes = [
-  # ARKit poses / affines are arrays of floats, not credentials.
-  '''pixel_to_model''',
-  '''"pose"\s*:''',
+  # ARKit poses / affines are arrays of floats, not credentials. Anchor to the
+  # numeric-array value shape so a real secret sharing a "pose" line is NOT
+  # masked: only suppress when the value is a bracketed list of numbers.
+  '''pixel_to_model\s*"?\s*:\s*\[[\s\d.,eE+-]*\]''',
+  '''"pose"\s*:\s*\[[\s\d.,eE+-]*\]''',
 ]

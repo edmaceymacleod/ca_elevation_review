@@ -42,8 +42,14 @@ public enum BundleIO {
 
     /// A decoder with no key strategy: the Codable types carry explicit
     /// snake_case CodingKeys, so the on-disk JSON matches the schema exactly.
+    ///
+    /// A nesting-depth guard is installed so the untrusted free-form
+    /// `device.metadata` (``JSONValue``) can't drive unbounded recursion and
+    /// overflow the stack on a maliciously/accidentally over-nested manifest.
     public static func makeDecoder() -> JSONDecoder {
-        JSONDecoder()
+        let decoder = JSONDecoder()
+        JSONValue.installDepthGuard(on: decoder)
+        return decoder
     }
 
     /// An encoder producing stable, human-diffable JSON (sorted keys, pretty).
@@ -199,10 +205,14 @@ public enum BundleIO {
     ///
     /// The relative paths come from decoded (potentially untrusted) bundle and
     /// capture JSON. This mirrors the Python sibling's guard in `bundle_io.py`:
-    /// reject absolute paths and any `..` component, then standardize and verify
-    /// the resolved URL is contained within `directory`.
+    /// reject absolute paths and any `..` component, then standardize, resolve
+    /// symlinks, and verify the resolved URL is contained within `directory`.
     ///
-    /// - Returns: the resolved absolute URL, guaranteed to be inside `directory`.
+    /// - Returns: the resolved absolute URL. For paths whose existing components
+    ///   are all contained in `directory` it is inside `directory`; symlinks
+    ///   along the path that point outside are rejected (`resolvingSymlinksInPath`
+    ///   only resolves *existing* components, so for not-yet-created write targets
+    ///   the existing parent is what gets checked).
     /// - Throws: ``BundleIOError/pathEscapesBundle(relativePath:)`` on violation.
     ///
     /// Public so the app layer's write-back (which builds a destination *inside*
@@ -218,11 +228,21 @@ public enum BundleIO {
         let base = directory.standardizedFileURL
         let resolved = base.appendingPathComponent(relativePath).standardizedFileURL
 
-        // Defense in depth: confirm the standardized target is contained within
-        // the standardized base directory (component-wise prefix, not a bare
-        // string prefix, so a sibling like ".../Bundle-evil" can't pass).
-        let basePath = base.path
-        let resolvedPath = resolved.path
+        // Defense in depth: confirm the target is contained within the base
+        // directory. `standardizedFileURL` only normalizes `.`/`..` lexically; it
+        // does NOT resolve symbolic links, so a symlink component (in an
+        // attacker-influenced synced bundle) could otherwise pass the string
+        // check while the real read/write follows the link outside the bundle.
+        // Resolve symlinks on both sides before comparing real paths. Note
+        // `resolvingSymlinksInPath()` resolves only existing components, so for a
+        // not-yet-created write target the existing parent is what gets checked.
+        let realBase = base.resolvingSymlinksInPath().standardizedFileURL
+        let realResolved = resolved.resolvingSymlinksInPath().standardizedFileURL
+
+        // Component-wise prefix (not a bare string prefix, so a sibling like
+        // ".../Bundle-evil" can't pass).
+        let basePath = realBase.path
+        let resolvedPath = realResolved.path
         let prefix = basePath.hasSuffix("/") ? basePath : basePath + "/"
         guard resolvedPath == basePath || resolvedPath.hasPrefix(prefix) else {
             throw BundleIOError.pathEscapesBundle(relativePath: relativePath)

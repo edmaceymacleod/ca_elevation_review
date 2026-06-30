@@ -158,6 +158,34 @@ final class FieldBundleTests: XCTestCase {
         XCTAssertTrue(url.path.hasSuffix("plans/L1.png"))
     }
 
+    func testResolvedURLRejectsSymlinkEscape() throws {
+        let fm = FileManager.default
+        let dir = try makeTempDir()
+        // A sibling directory OUTSIDE the bundle, holding a secret file.
+        let outside = fm.temporaryDirectory
+            .appendingPathComponent("cek-outside-\(UUID().uuidString)")
+        try fm.createDirectory(at: outside, withIntermediateDirectories: true)
+        try Data("secret".utf8).write(to: outside.appendingPathComponent("secret.png"))
+        defer {
+            try? fm.removeItem(at: dir)
+            try? fm.removeItem(at: outside)
+        }
+
+        // Plant a symlink INSIDE the bundle that points at the outside dir. A
+        // lexical containment check would accept "link/secret.png" (the string
+        // stays under the bundle), but resolving the symlink escapes it.
+        let link = dir.appendingPathComponent("link")
+        try fm.createSymbolicLink(at: link, withDestinationURL: outside)
+
+        XCTAssertThrowsError(
+            try BundleIO.resolvedURL(forRelativePath: "link/secret.png", in: dir)
+        ) { error in
+            guard case BundleIOError.pathEscapesBundle = error else {
+                return XCTFail("expected pathEscapesBundle, got \(error)")
+            }
+        }
+    }
+
     func testStageMediaRejectsTraversal() throws {
         let dir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: dir) }

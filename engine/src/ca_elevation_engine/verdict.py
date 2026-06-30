@@ -16,6 +16,8 @@ Verdict ladder (first match wins):
 
 from __future__ import annotations
 
+import math
+
 from .compare import Match
 from .models import (
     Deltas,
@@ -92,23 +94,31 @@ def classify(match: Match, manifest: SpecManifest) -> DeviceResult:
         )
 
     # --- FLAG vs PASS ----------------------------------------------------- #
+    # A non-finite delta means the geometry is undefined/corrupt. `NaN > tol` is
+    # False, so a naive comparison would mask it and fall through to PASS;
+    # treat any non-finite delta as a breach instead. Ingest rejects non-finite
+    # coordinates when validation is on -- this is defense-in-depth for the
+    # --no-validate path and degenerate poses.
     breaches: list[str] = []
-    if deltas.position is not None and tol.position is not None and deltas.position > tol.position:
-        breaches.append(f"position {deltas.position:.3f} > tol {tol.position:.3f}")
-    if (
-        deltas.mounting_height is not None
-        and tol.mounting_height is not None
-        and deltas.mounting_height > tol.mounting_height
-    ):
-        breaches.append(
-            f"mounting height {deltas.mounting_height:.3f} > tol {tol.mounting_height:.3f}"
-        )
-    if (
-        deltas.orientation is not None
-        and tol.orientation is not None
-        and deltas.orientation > tol.orientation
-    ):
-        breaches.append(f"orientation {deltas.orientation:.1f}deg > tol {tol.orientation:.1f}deg")
+    if deltas.position is not None:
+        if not math.isfinite(deltas.position):
+            breaches.append("position delta is non-finite (undefined geometry)")
+        elif tol.position is not None and deltas.position > tol.position:
+            breaches.append(f"position {deltas.position:.3f} > tol {tol.position:.3f}")
+    if deltas.mounting_height is not None:
+        if not math.isfinite(deltas.mounting_height):
+            breaches.append("mounting-height delta is non-finite (undefined geometry)")
+        elif tol.mounting_height is not None and deltas.mounting_height > tol.mounting_height:
+            breaches.append(
+                f"mounting height {deltas.mounting_height:.3f} > tol {tol.mounting_height:.3f}"
+            )
+    if deltas.orientation is not None:
+        if not math.isfinite(deltas.orientation):
+            breaches.append("orientation delta is non-finite (undefined geometry)")
+        elif tol.orientation is not None and deltas.orientation > tol.orientation:
+            breaches.append(
+                f"orientation {deltas.orientation:.1f}deg > tol {tol.orientation:.1f}deg"
+            )
 
     result.confidence = _match_confidence(match, tol)
     if breaches:
@@ -121,6 +131,10 @@ def classify(match: Match, manifest: SpecManifest) -> DeviceResult:
 
 def _match_confidence(match: Match, tol) -> float:
     """Confidence in [0,1] from how tightly the observation sits in the gate."""
+    if match.position_delta is not None and not math.isfinite(match.position_delta):
+        # Undefined geometry: report rock-bottom confidence rather than the
+        # clamp-ordering accident (max(0.3, NaN) == 0.3) that masked it.
+        return 0.05
     if match.position_delta is None or tol.position is None:
         base = 0.6
     else:

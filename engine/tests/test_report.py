@@ -256,6 +256,21 @@ def test_render_json_round_trip(tmp_path):
 
 
 @pytest.mark.unit
+def test_render_json_rejects_non_finite():
+    # A non-finite delta must raise rather than emit bare NaN/Infinity tokens,
+    # which are invalid JSON and would break a standards-compliant consumer.
+    report = _report()
+    report.device_results[0].deltas.position = float("nan")
+    with pytest.raises(ValueError):
+        render_json(report)
+
+    report = _report()
+    report.device_results[0].confidence = float("inf")
+    with pytest.raises(ValueError):
+        render_json(report)
+
+
+@pytest.mark.unit
 def test_summarize_text(tmp_path):
     report = _report()
     text = summarize(report)

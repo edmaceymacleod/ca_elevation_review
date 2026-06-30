@@ -13,7 +13,6 @@ unit-testable headlessly with no heavy backend installed.
 from __future__ import annotations
 
 import math
-import os
 from pathlib import Path
 
 import numpy as np
@@ -39,20 +38,29 @@ SUPPORTED_SUFFIXES = (".e57", ".ply", ".pcd", ".xyz", ".pts")
 def resolve_cloud_path(rel_path: str | None, bundle_dir: str | None) -> Path | None:
     """Resolve a bundle-relative cloud path, guarding against traversal.
 
-    Returns ``None`` when there is nothing to resolve (no ``rel_path`` or no
-    ``bundle_dir``). Raises :class:`PointCloudPathError` (a ``ValueError``) when
-    the path is absolute or escapes the bundle. The returned ``Path`` may or may
-    not exist; existence is the loader's concern (see :func:`load_point_cloud`).
+    The candidate is fully resolved (``Path.resolve``) before the containment
+    check, so symlinks anywhere in the joined path are followed to their real
+    target. This rejects both ``../`` traversal and an in-bundle symlink that
+    points outside the bundle (the capture bundle is untrusted iOS-supplied
+    content). Returns ``None`` when there is nothing to resolve (no ``rel_path``
+    or no ``bundle_dir``). Raises :class:`PointCloudPathError` (a ``ValueError``)
+    when the path is absolute or escapes the bundle. The returned ``Path`` may or
+    may not exist; existence is the loader's concern (see
+    :func:`load_point_cloud`).
     """
     if not rel_path or bundle_dir is None:
         return None
-    base = Path(bundle_dir).resolve()  # resolves symlinks on bundle_dir
+    base = Path(bundle_dir).resolve()  # real path of the bundle root
     # Reject absolute rel_path outright (would escape the bundle by construction).
     if Path(rel_path).is_absolute():
         raise PointCloudPathError("point_cloud path must be bundle-relative")
-    # Lexical normalization of the JOINED path (does NOT require the file to exist),
-    # so an in-tree `clouds/../clouds/s.ply` normalizes back inside the bundle.
-    cand = Path(os.path.normpath(base / rel_path))
+    # Resolve the FULL joined path (strict=False: the file need not exist yet).
+    # .resolve() follows symlinks, so an in-bundle symlink that points outside
+    # the bundle resolves to its real out-of-bundle target and is rejected by the
+    # containment check below -- unlike a purely lexical os.path.normpath, which
+    # would leave the symlink lexically inside `base`. An in-tree
+    # `clouds/../clouds/s.ply` still normalizes back inside the bundle.
+    cand = (base / rel_path).resolve()
     if cand != base and base not in cand.parents:
         raise PointCloudPathError("point_cloud path escapes bundle")
     return cand  # may or may not exist; the loader decides existence
@@ -98,7 +106,11 @@ def load_point_cloud(
 
 
 def _load_e57(path: Path) -> np.ndarray:  # pragma: no cover - heavy
-    """Read scan 0 of an E57 file via pye57 (lazy import).
+    """Read ALL scans of an E57 file via pye57 (lazy import).
+
+    E57 scans share a common coordinate frame, so every scan is read and
+    vstacked rather than silently dropping all but scan 0 (a terrestrial-scanner
+    survey commonly carries multiple scans).
 
     PROVISIONAL: the pye57 API varies across 0.x releases. Verified against the
     pye57 dict-returning ``read_scan`` API (keys ``cartesianX/Y/Z``). Re-pin and
@@ -112,8 +124,11 @@ def _load_e57(path: Path) -> np.ndarray:  # pragma: no cover - heavy
     e57 = pye57.E57(str(path))
     if e57.scan_count < 1:
         raise ValueError(f"E57 has no scans: {path}")
-    data = e57.read_scan(0, ignore_missing_fields=True)
-    xyz = np.column_stack([data["cartesianX"], data["cartesianY"], data["cartesianZ"]])
+    scans = []
+    for scan_index in range(e57.scan_count):
+        data = e57.read_scan(scan_index, ignore_missing_fields=True)
+        scans.append(np.column_stack([data["cartesianX"], data["cartesianY"], data["cartesianZ"]]))
+    xyz = np.vstack(scans) if len(scans) > 1 else scans[0]
     return np.ascontiguousarray(xyz, dtype=np.float64)
 
 

@@ -20,7 +20,8 @@ this runs inside a single ``Transaction``.
 from __future__ import annotations
 
 import logging
-from typing import List
+import re
+from typing import List, Optional
 
 from .writeback import DeviceOverride
 
@@ -37,7 +38,21 @@ logger = logging.getLogger(__name__)
 MARKER_PARAM = "CAElevationOverridden"
 
 # Physical marker token, appended to BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS.
+# The marker now ENCODES the view id the override was applied in (``[CAElev:123]``)
+# because the Comments param is model-wide (one value per element, shared across
+# views) while the colour override is PER-VIEW. Without the view id, a clear pass
+# run with a different active view would strip the model-wide marker while leaving
+# the colour in the original view -- an unclearable stale colour. Encoding the view
+# lets clear_prior_overrides reset the override in the view it was actually applied
+# in, regardless of which view is active. A bare legacy ``[CAElev]`` (no id) is
+# still recognised so markers written by older runs are not orphaned.
 _SENTINEL = "[CAElev]"
+_VIEW_MARKER_RE = re.compile(r"\[CAElev(?::(-?\d+))?\]")
+
+
+def _view_sentinel(view_int: int) -> str:
+    """The marker token encoding the view id, e.g. ``[CAElev:123]``."""
+    return f"[CAElev:{view_int}]"
 
 
 def apply_verdicts(doc, view, overrides: List[DeviceOverride]) -> int:  # noqa: ANN001
@@ -71,9 +86,14 @@ def apply_verdicts(doc, view, overrides: List[DeviceOverride]) -> int:  # noqa: 
                 "not render (plan line colour still applied)"
             )
 
-        # (2) Apply the current report's overrides, marking each element.
+        # (2) Apply the current report's overrides, marking each element with the
+        #     ACTIVE view id so a later clear can reset the right view.
+        from ._compat import eid_value
+
+        view_int = eid_value(view.Id)
         applied = 0
         missing = 0
+        unmarked = 0  # override applied but marker could not be written
         for override in overrides:
             # UniqueId overload: pass the stable GUID-like string straight in.
             el = doc.GetElement(override.device_id)
@@ -86,7 +106,13 @@ def apply_verdicts(doc, view, overrides: List[DeviceOverride]) -> int:  # noqa: 
                 continue
             ogs = _build_override(override.color, solid_fill_id)
             view.SetElementOverrides(el.Id, ogs)
-            _stamp_marker(el)
+            if not _stamp_marker(el, view_int):
+                # The colour override landed (it targets the view) but the
+                # ownership marker could not be stamped (Comments read-only/absent),
+                # so a future re-import that DROPS this device will NOT find the
+                # marker and will leave a stale colour behind. Count + warn so the
+                # broken-idempotency case is visible instead of a clean "applied".
+                unmarked += 1
             applied += 1
 
         txn.Commit()
@@ -95,6 +121,14 @@ def apply_verdicts(doc, view, overrides: List[DeviceOverride]) -> int:  # noqa: 
                 "CA Elevation: applied %d override(s); %d device id(s) unresolved",
                 applied,
                 missing,
+            )
+        if unmarked:
+            logger.warning(
+                "CA Elevation: %d of %d override(s) could not be marked "
+                "(Comments read-only/absent); those device(s) will NOT be cleared "
+                "on a later re-import that drops them and may keep a stale colour",
+                unmarked,
+                applied,
             )
         return applied
     except Exception:
@@ -108,6 +142,14 @@ def clear_prior_overrides(doc, view) -> int:  # noqa: ANN001
 
     Returns the number cleared. This is what makes a re-import idempotent for
     devices dropped from the new report.
+
+    The ownership marker is a model-wide Comments value but the colour override is
+    PER-VIEW, so this enumerates marked elements DOCUMENT-WIDE (not just the passed
+    ``view``) and resets each element's override in the SPECIFIC view its marker
+    records. That clears a stale colour left in a view that is not currently active
+    -- the previous active-view-only pass could strip the model-wide marker while
+    leaving the colour orphaned in another view. ``view`` is still used as the
+    fallback for legacy markers that carry no view id.
     """
     # LIVE: requires Revit.
     from Autodesk.Revit.DB import (
@@ -115,6 +157,8 @@ def clear_prior_overrides(doc, view) -> int:  # noqa: ANN001
         OverrideGraphicSettings,
         Transaction,
     )
+
+    from ._compat import eid_value
 
     # Transaction policy: apply_verdicts calls us with its own transaction
     # already open (doc.IsModifiable is True), so we must NOT open a second one.
@@ -127,16 +171,26 @@ def clear_prior_overrides(doc, view) -> int:  # noqa: ANN001
     try:
         cleared = 0
         default_ogs = OverrideGraphicSettings()  # a fresh, all-default override
-        collector = FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType()
+        fallback_view_int = eid_value(view.Id)
+        view_cache = {fallback_view_int: view}  # view_int -> View (resolved lazily)
+        # Document-wide (no view filter): a marked element may carry an override in
+        # a view other than the active one.
+        collector = FilteredElementCollector(doc).WhereElementIsNotElementType()
         # Materialise before mutating params: editing Comments mid-walk must not
         # disturb the collector's lazy enumeration.
         for el in list(collector):
             # The Comments sentinel -- NOT the colour -- is the authoritative
             # "this is ours" test, so a hand-coloured or colour-sharing element
             # is never touched and a dropped device IS reset.
-            if not _has_marker(el):
+            marked_view_int = _marked_view_int(el)
+            if marked_view_int is None:
                 continue
-            view.SetElementOverrides(el.Id, default_ogs)
+            # A legacy marker (no encoded view id) yields -1; reset in the passed
+            # view, the best available guess for where the legacy colour landed.
+            target_int = fallback_view_int if marked_view_int == -1 else marked_view_int
+            target_view = _resolve_view(doc, target_int, view_cache)
+            if target_view is not None:
+                target_view.SetElementOverrides(el.Id, default_ogs)
             _strip_marker(el)
             cleared += 1
         if own_txn is not None:
@@ -146,6 +200,20 @@ def clear_prior_overrides(doc, view) -> int:  # noqa: ANN001
         if own_txn is not None and own_txn.HasStarted() and not own_txn.HasEnded():
             own_txn.RollBack()
         raise
+
+
+def _resolve_view(doc, view_int, cache):  # noqa: ANN001
+    """Resolve a View by its integer id, memoised. None if it no longer exists."""
+    if view_int in cache:
+        return cache[view_int]
+    from ._compat import make_eid
+
+    try:
+        resolved = doc.GetElement(make_eid(view_int))
+    except Exception:
+        resolved = None
+    cache[view_int] = resolved
+    return resolved
 
 
 # --- marker + override helpers (palette-independent Comments sentinel) --------
@@ -162,33 +230,52 @@ def _comments_param(el):  # noqa: ANN001
 
 
 def _has_marker(el) -> bool:  # noqa: ANN001
-    """True when the element's Comments param carries our sentinel token."""
+    """True when the element's Comments param carries any CA-Elevation marker."""
+    return _marked_view_int(el) is not None
+
+
+def _marked_view_int(el) -> Optional[int]:  # noqa: ANN001
+    """The view id encoded in the element's marker, -1 for a legacy id-less marker.
+
+    Returns ``None`` when the element carries no CA-Elevation marker at all.
+    """
     param = _comments_param(el)
     if param is None:
-        return False
-    return _SENTINEL in (param.AsString() or "")
+        return None
+    match = _VIEW_MARKER_RE.search(param.AsString() or "")
+    if match is None:
+        return None
+    captured = match.group(1)
+    return int(captured) if captured is not None else -1
 
 
-def _stamp_marker(el) -> None:  # noqa: ANN001
-    """Append the sentinel token to Comments if not already present."""
+def _stamp_marker(el, view_int: int) -> bool:  # noqa: ANN001
+    """Append the view-scoped sentinel token to Comments. Returns whether written.
+
+    Returns ``False`` when the Comments param is absent or read-only (the marker
+    could NOT be written, breaking idempotency for this element); ``True`` when the
+    marker is present afterwards (newly written, or already there).
+    """
     param = _comments_param(el)
     if param is None or param.IsReadOnly:
-        return
+        return False
     value = param.AsString() or ""
-    if _SENTINEL in value:
-        return
-    param.Set((value + " " + _SENTINEL).strip() if value else _SENTINEL)
+    if _VIEW_MARKER_RE.search(value):
+        return True  # already marked (this or a prior run); idempotent
+    token = _view_sentinel(view_int)
+    param.Set((value + " " + token).strip() if value else token)
+    return True
 
 
 def _strip_marker(el) -> None:  # noqa: ANN001
-    """Remove the sentinel token from Comments, leaving any user text intact."""
+    """Remove any CA-Elevation marker from Comments, leaving user text intact."""
     param = _comments_param(el)
     if param is None or param.IsReadOnly:
         return
     value = param.AsString() or ""
-    if _SENTINEL not in value:
+    if not _VIEW_MARKER_RE.search(value):
         return
-    param.Set(value.replace(_SENTINEL, "").strip())
+    param.Set(_VIEW_MARKER_RE.sub("", value).strip())
 
 
 def _solid_fill_pattern_id(doc):  # noqa: ANN001

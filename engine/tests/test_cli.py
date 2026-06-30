@@ -81,6 +81,30 @@ def test_schema_subcommand(capsys):
     assert json.loads(out)["title"] == "Spec Manifest"
 
 
+def test_run_no_validate_emits_warning(tmp_path, f01_manifest_path, f01_capture_path, capsys):
+    out = tmp_path / "out"
+    code = main(
+        [
+            "run",
+            "--manifest",
+            str(f01_manifest_path),
+            "--capture",
+            str(f01_capture_path),
+            "--out",
+            str(out),
+            "--format",
+            "json",
+            "--no-validate",
+            "--quiet",
+        ]
+    )
+    assert code == 0
+    # The skipped-validation warning is printed so a --no-validate run is not
+    # indistinguishable from a fully validated one.
+    err = capsys.readouterr().err
+    assert "validation was SKIPPED" in err
+
+
 def test_run_missing_file_exits_one(tmp_path, f01_capture_path):
     code = main(
         [

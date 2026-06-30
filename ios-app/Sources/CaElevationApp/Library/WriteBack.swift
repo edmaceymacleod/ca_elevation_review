@@ -94,6 +94,18 @@ enum WriteBack {
         let scoped = libraryRoot.startAccessingSecurityScopedResource()
         defer { if scoped { libraryRoot.stopAccessingSecurityScopedResource() } }
 
+        let fm = FileManager.default
+
+        // Freeze the source before copying into the provider. `localPackageDirectory`
+        // is the shared per-session export directory, into which a later `makeShot`
+        // could stage new media while this (detached) write-back runs — racing the
+        // recursive copy and risking a partial tree. Snapshot it once into a local
+        // temp dir so the coordinated copy reads an immutable point-in-time tree.
+        let snapshot = fm.temporaryDirectory
+            .appendingPathComponent("WriteBack-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fm.removeItem(at: snapshot) }
+        try fm.copyItem(at: localPackageDirectory, to: snapshot)
+
         // Destination: <projectDirectory>/Exports/<yyyyMMdd-HHmmss>-<shortUUID>/.
         // Built as a relative subpath and resolved through BundleIO's traversal
         // guard rather than a raw appendingPathComponent, so the destination is
@@ -111,7 +123,6 @@ enum WriteBack {
             error: &coordinatorError
         ) { resolved in
             do {
-                let fm = FileManager.default
                 // Create intermediate dirs (the `Exports` folder) under
                 // coordination, in case this is the project's first write-back.
                 try fm.createDirectory(
@@ -125,7 +136,8 @@ enum WriteBack {
                 if fm.fileExists(atPath: resolved.path) {
                     try fm.removeItem(at: resolved)
                 }
-                try fm.copyItem(at: localPackageDirectory, to: resolved)
+                // Copy the frozen snapshot, never the live session directory.
+                try fm.copyItem(at: snapshot, to: resolved)
             } catch {
                 copyError = error
             }

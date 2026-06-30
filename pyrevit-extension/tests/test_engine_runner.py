@@ -184,10 +184,35 @@ def test_validate_passes_capture_when_given():
 
 
 # --- corrupt / decoupled report surfaces (FLOOR, mocked) ----------------- #
-def test_run_engine_corrupt_report_does_not_crash(tmp_path):
+def test_run_engine_corrupt_report_does_not_crash_but_is_not_ok(tmp_path, caplog):
     out = tmp_path / "out"
     out.mkdir()
     (out / "verdict_report.json").write_text("{bad")
+    json_path = os.path.join(str(out), "verdict_report.json")
+    with caplog.at_level("ERROR"):
+        result = engine_runner.run_engine(
+            "m.json",
+            "c.json",
+            str(out),
+            command=EngineCommand("ca-elevation", []),
+            runner=_Recorder(returncode=0),
+            exists=lambda p: p == json_path,
+        )
+    # Does not crash, report is None...
+    assert result.report is None
+    # ...but the corrupt report is surfaced, NOT swallowed as a clean success:
+    # report_error is populated, ok is False even though the exit code was 0, and
+    # the read failure was logged.
+    assert result.report_error is not None
+    assert result.status == EngineStatus.SUCCESS  # status still reflects exit code
+    assert result.ok is False
+    assert any("unreadable" in r.message for r in caplog.records)
+
+
+def test_run_engine_good_report_has_no_report_error(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "verdict_report.json").write_text(json.dumps({"summary": {"total": 1}}))
     json_path = os.path.join(str(out), "verdict_report.json")
     result = engine_runner.run_engine(
         "m.json",
@@ -197,8 +222,7 @@ def test_run_engine_corrupt_report_does_not_crash(tmp_path):
         runner=_Recorder(returncode=0),
         exists=lambda p: p == json_path,
     )
-    assert result.report is None
-    assert result.status == EngineStatus.SUCCESS
+    assert result.report_error is None
     assert result.ok is True
 
 

@@ -133,6 +133,40 @@ def test_nonpositive_height_px_rejected():
         manifest_builder.build_manifest(_GOOD_PROJECT, [bad], [_device()])
 
 
+def test_integer_valued_float_dims_accepted():
+    # The schema accepts 1000.0 for "type: integer"; the builder must NOT be
+    # stricter than the schema (subset invariant), so an integer-valued float for
+    # width_px/height_px is accepted and coerced.
+    fp = _export()
+    fp.width_px = 1000.0
+    fp.height_px = 800.0
+    m = manifest_builder.build_manifest(_GOOD_PROJECT, [fp], [_device()])
+    assert m["levels"][0]["floorplan"]["width_px"] == 1000
+    assert m["levels"][0]["floorplan"]["height_px"] == 800
+
+
+def test_nonintegral_float_dims_rejected():
+    # A non-integer float (1000.5) is NOT valid for "type: integer".
+    fp = _export()
+    fp.width_px = 1000.5
+    with pytest.raises(ManifestBuildError, match="positive integer"):
+        manifest_builder.build_manifest(_GOOD_PROJECT, [fp], [_device()])
+
+
+def test_bool_dims_rejected():
+    fp = _export()
+    fp.width_px = True
+    with pytest.raises(ManifestBuildError, match="positive integer"):
+        manifest_builder.build_manifest(_GOOD_PROJECT, [fp], [_device()])
+
+
+def test_nonfinite_float_dims_rejected():
+    fp = _export()
+    fp.width_px = float("inf")
+    with pytest.raises(ManifestBuildError, match="positive integer"):
+        manifest_builder.build_manifest(_GOOD_PROJECT, [fp], [_device()])
+
+
 def test_nonfinite_affine_rejected():
     bad = _export()
     bad.pixel_to_model = [float("nan"), 0, 0, 0, 0.01, 0]

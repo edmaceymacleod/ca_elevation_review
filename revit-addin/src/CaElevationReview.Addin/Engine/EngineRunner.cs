@@ -195,6 +195,16 @@ namespace CaElevationReview.Addin.Engine
                 await WaitForExitAsync(process, cancellation).ConfigureAwait(false);
             }
 
+            // WaitForExitAsync above completes on the Process.Exited event, which fires when
+            // the child terminates but does NOT guarantee the asynchronous output/error pumps
+            // (BeginOutputReadLine/BeginErrorReadLine) have delivered their final buffered
+            // lines and end-of-stream sentinels. The blocking, parameterless WaitForExit()
+            // additionally waits for those readers to drain, so call it here before reading the
+            // StringBuilders; without it the tail of stdout/stderr (often the very error line a
+            // failing run needs) can be silently dropped. The process has already exited, so
+            // this returns promptly once the readers flush.
+            process.WaitForExit();
+
             var result = new EngineRunResult
             {
                 ExitCode = process.ExitCode,
