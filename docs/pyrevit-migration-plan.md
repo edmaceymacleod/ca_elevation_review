@@ -729,13 +729,45 @@ hardware + sign-off as the remaining gate.
    findings (Section 8), not merely "validated with real users."
 3. **Icons** — placeholder now, real artwork later.
 4. **Settings storage + engine-venv provisioning (load-bearing, not minor).**
-   Where the engine path / venv location is configured (pyRevit config vs a
-   repo-level settings file), **and how the user provisions the engine venv at all**
-   — pyRevit's install path has no installer hook to bundle it (Section 8), so this
-   is the central onboarding-friction question, not a config detail. Couples to the
-   runtime-validation UX (Section 3): a mis-located engine means no validation until
-   a full `run`. (Per-project write-back override state is **not** part of this item
-   — Section 2 uses an in-model marker, so no separate store is needed.)
+   **RESOLVED (2026-06-30 — ADR T2.3).** No repo-level settings file (a
+   machine-specific absolute path in a *public* repo is an identity/firewall
+   leak and is clobbered by `git pull`). Configuration is the existing
+   `engine_runner.locate_engine` chain — **no new store on the happy path:**
+   - **Canonical (zero-config):** the bundled **`engine-venv/` next to the
+     extension** — locator step 3, the only **auto-discovered (non-raising)
+     probed** slot (steps 1–2 are probed too but *raise* on a configured-but-
+     missing path; step 4/PATH is *un*-probed).
+   - **Override:** the **`CA_ELEVATION_ENGINE`** env var (step 2) for
+     non-standard layouts (this is also the **standalone/APPDATA** install's
+     provisioning path until a wheel/index ships).
+   - **Optional GUI override (deferred):** a path stored in pyRevit
+     **`user_config`**, read **only in the `script.py` layer** and passed down
+     as `locate_engine(explicit=…)` (step 1) — kept out of stdlib `lib/` so the
+     Section 3 "`lib/` imports no pyRevit" invariant holds.
+   **In-tree venv must be git-ignored:** `engine-venv/` lands inside the
+   public-repo working tree, so `.gitignore` gains `engine-venv/` (a machine-
+   specific venv with absolute shebangs must never be committable).
+   **Provisioning** (pyRevit has no installer hook — Section 8): a documented
+   bootstrap script **`scripts/provision-engine-venv.ps1`** (Windows-first;
+   Revit is Windows-only, `-ExtensionRoot` param for the APPDATA layout) that
+   selects an interpreter (**prefer pyRevit's bundled CPython 3.12.3** if it
+   exposes `venv`/`ensurepip`, else a system Python ≥3.10, else fail loudly),
+   creates `engine-venv/` at the step-3 probed location, `pip install`s
+   `engine[report]` (both report backends, regardless of the PDF-vs-HTML
+   default — `pdf.py` degrades to HTML), and **gates on a `ca-elevation
+   --version` health check** (rejecting a venv that was created but whose engine
+   install failed). **Dovetails with T1.2:** T1.2 adds the PATH/existence probe
+   and a console-script-vs-`python.exe` health check so a half-provisioned venv
+   fails deterministically rather than passing on a bare `python.exe` and
+   crashing at run; the failure path `forms.alert`s with a remediation hint
+   pointing at the bootstrap script. No change to `lib/config.py` /
+   `engine_runner.py` is required by the *storage* decision; the chain is already
+   correct. Couples to the runtime-validation UX (Section 3): a mis-located
+   engine means no validation until a full `run`, which the T1.2 pre-flight now
+   catches up-front. (Per-project write-back override state is **not** part of
+   this item — Section 2 uses an in-model marker, so no separate store is needed.)
+   *(The `scripts/provision-engine-venv.ps1` file itself is a follow-up implementation
+   deliverable, not yet shipped.)*
 5. **Adopt the Sterling Revit MCP server for the live dev loop?** (Section 11.)
    Confirm we standardize on it for developing/validating the `revit_*` modules,
    and share `scripts/install-revit-mcp.ps1` + the exact MCP tool signatures so we

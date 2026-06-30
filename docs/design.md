@@ -309,17 +309,61 @@ The license stays Apache-2.0 regardless.
 
 The app name is **decided: CA Elevation Review** (no longer open).
 
-1. **Bundle transfer mechanism.** AirDrop vs iCloud Drive vs Files vs cable -- pick the default
-   round-trip UX (local-only, no sync server).
-2. **Revit version targets.** Which years does the Revit front door support at launch? The legacy
-   C# add-in targets 2024-2027; the pyRevit version floor is still open (see
-   [`pyrevit-migration-plan.md`](pyrevit-migration-plan.md)).
+1. **Bundle transfer mechanism.** **RECOMMENDATION (pending owner sign-off):** the app stays
+   transport-agnostic -- it emits and ingests a single self-contained bundle *file* exposed
+   through the iOS Files app ("On My iPhone" / Save-to-Files). The documented default offline
+   transport is **wired File Sharing** (Apple Devices on Windows / Finder on Mac), which is
+   cross-platform, fully offline, and keeps confidential as-built data on the two devices -- the
+   right fit for an offline construction site. (Note: this is *not* Windows File Explorer/MTP,
+   which only sees the camera roll; it requires the iOS app to expose its bundle for File
+   Sharing. The connector is Lightning or USB-C depending on the supported-iPhone floor -- see
+   Open #3.) A **local Wi-Fi / SMB drop** is the offline fallback when a cable is inconvenient.
+   **iCloud Drive** is the connected-convenience option (routes data through the user's Apple
+   cloud, and needs connectivity). **AirDrop is supported but not the default**, because the
+   Revit front door runs on Windows and AirDrop is Apple-to-Apple only. (Phase-2 flag: the wired
+   and LAN paths require real app-side plumbing -- `UIFileSharingEnabled` + Documents-container
+   placement, or a LAN endpoint -- so this default is doc-reversible but not doc-only to build.)
+2. **Revit version targets.** **RESOLVED (2026-06-30) -- validated floor Revit 2025; 2024 best-effort;
+   ceiling tracks the pinned pyRevit.** Unlike the legacy C# add-in (which compiles a per-year
+   artifact: `net48` for 2024, `net8.0-windows` for 2025-2027), the pyRevit extension ships **no
+   per-year build** -- the same CPython `script.py` runs on every Revit year and the engine runs
+   out-of-process, so "support year N" costs only (a) the pinned pyRevit installing on N and (b) a
+   live `revit_*` validation pass on N. The Revit-year target is therefore **decoupled** from the
+   CPython floor (set by the pyRevit pin -- 6.1.x -> CPython 3.12.3 -- see
+   [`pyrevit-migration-plan.md`](pyrevit-migration-plan.md) Open item 1, RESOLVED).
+   - **Validated floor: Revit 2025** -- the firm Phase-1 commitment and the one config confirmed
+     today (dev machine: Revit 2025 + pyRevit 6.1.0.26047 + CPython 3.12.3). 2024 is the only
+     .NET-Framework-4.8 year; 2025+ is .NET 8 / CoreCLR. Keeping the *validated* range at 2025+ puts
+     it on one CLR family with the validation machine, engineering out the one real per-year risk
+     (pythonnet on .NET Framework 4.8 vs CoreCLR).
+   - **Best-effort floor: Revit 2024 -- offered, not promised.** Untested on net48/pythonnet from
+     today's dev machine, so unvalidated; a bad config **fails loud** (the `script.py`
+     `sys.implementation`/`sys.version_info` runtime guard), degrading safely rather than emitting
+     wrong elevations. The retained C# add-in still serves 2024 during the keep-one-cycle window
+     ([`pyrevit-migration-plan.md`](pyrevit-migration-plan.md) Open item 2). Promotable to validated
+     via a live net48 pass (`docs/pyrevit-migration-plan.md` §11 MCP loop) -- docs + validation, no
+     code. **(Owner sign-off pending on this 2024 grading -- see ADR T2.4.)**
+   - **Ceiling: tracks the pinned pyRevit release**, not a fixed year. **Phase-1 stance: 2025
+     validated; 2026 committed (pre-launch live pass pending on an installed Revit 2026); 2027
+     best-effort.** A year is promoted to validated once the pinned pyRevit officially supports it
+     (confirm from 6.1.0's `min_revit_version`/`max_revit_version` -- TO CONFIRM) and a live pass
+     runs. No CI-matrix change: Revit years are never exercised on hosted runners (the `revit` job is
+     non-gating); the Python matrix is orthogonal. No automated re-validation exists, so re-run the
+     matrix check on any pyRevit repin.
 3. **Minimum iPhone.** Confirm iPhone Pro w/ LiDAR; which generation floor.
 4. **Vision model for device typing.** On-device CoreML in the app vs desktop-side in the engine;
    which model; how much it is leaned on given identity stays human-confirmed in v1.
-5. **Report format.** PDF vs HTML as the primary deliverable.
+5. **Report format.** **RECOMMENDATION (pending owner sign-off):** **PDF is the primary issued
+   deliverable** -- it is the construction lingua franca (printed, marked up in Bluebeam,
+   attached to RFIs, signed, archived). **HTML** stays first-class as the on-desktop
+   interactive-review format and as the always-available, stdlib-only fallback when the optional
+   `reportlab` backend is absent (the engine pipeline already defaults to PDF and wraps a
+   PDF->HTML fallback; JSON remains the Revit write-back / archival wire shape). The Revit front
+   door generates reports through the engine pipeline (which already defaults to PDF), so the
+   front-door distribution should install the optional `[report]` (`reportlab`) backend -- else
+   the primary deliverable silently degrades to HTML in the field.
 6. **Manifest + capture-package schema.** Lock the field list and JSON-Schema before Phase 0 tests.
 
 ---
 
-*Name: CA Elevation Review (decided). Last updated: 2026-06-29.*
+*Name: CA Elevation Review (decided). Last updated: 2026-06-30.*

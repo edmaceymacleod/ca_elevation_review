@@ -191,7 +191,7 @@ trustworthy before more effort rides on it.
 
 ## Documentation
 
-- [`docs/design.md`](docs/design.md) -- the product + architecture design sketch (source of intent).
+- [`docs/design.md`](docs/design.md) -- the product + architecture design sketch (source of intent); the Phase-1 open questions on Revit-version floor, report format, and bundle-transfer UX were resolved 2026-06-30.
 - [`docs/architecture.md`](docs/architecture.md) -- the three components, the seam, the payloads, the pipeline.
 - [`docs/pyrevit-migration-plan.md`](docs/pyrevit-migration-plan.md) -- the front-door pivot from the C# add-in to the pyRevit extension, with rationale and file layout.
 - [`docs/testing.md`](docs/testing.md) -- the tiered testing model and fixture / registry / ratchet discipline.
