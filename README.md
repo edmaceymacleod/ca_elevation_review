@@ -198,6 +198,7 @@ trustworthy before more effort rides on it.
 - [`docs/ci.md`](docs/ci.md) -- the single-gate CI design and the one required `all-green` check.
 - [`docs/schemas.md`](docs/schemas.md) -- the three payload schemas, field by field, and the affine / pose conventions.
 - [`docs/ui-conventions.md`](docs/ui-conventions.md) -- the iPhone app's look-and-feel policy (native-default), color/typography semantics, and branding assets.
+- [`docs/sessions/`](docs/sessions/README.md) -- the cross-session record format: dated, durable notes for multi-step or risky changes (what changed, how verified, how to undo).
 
 ## Contributing
 
