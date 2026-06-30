@@ -1,0 +1,52 @@
+# Line-ending policy: LF everywhere, in the repo AND in every working tree.
+#
+# Why this exists: Git for Windows ships with core.autocrlf=true, so a Windows
+# checkout smudges the LF-stored sources to CRLF on disk. SwiftLint on Windows
+# then counts CR and LF as SEPARATE line breaks -- doubling every file's line
+# count -- and fires false `comma`, `trailing_newline`, and `file_length`
+# violations on every Swift file, while CI (macOS/Linux, LF) stays clean. The
+# `eol=lf` attribute below takes precedence over core.autocrlf, forcing LF on
+# checkout so local `swiftlint --strict` matches CI exactly. See
+# ios-app/CLAUDE.md "Platform gotchas" and ios-app/scripts/win-swiftlint.ps1.
+#
+# This is a deliberate repo-WIDE policy (Swift, Python, C#, YAML, Markdown, the
+# .ps1 scripts): one normalized line ending for every contributor. CI already
+# runs on LF, so this only changes on-disk bytes for Windows working trees.
+
+# Auto-detect text vs binary; normalize detected text to LF in the index and on
+# checkout. Keep this FIRST so the explicit binary marks below win (last match
+# on the more specific pattern takes precedence).
+* text=auto eol=lf
+
+# Binary types: never line-ending-normalize (belt-and-suspenders over text=auto's
+# autodetect; protects the tracked PNG/e57 and any future binaries from
+# corruption on `git add --renormalize`).
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.icns  binary
+*.heic  binary
+*.webp  binary
+*.bmp   binary
+*.tiff  binary
+*.pdf   binary
+*.zip   binary
+*.e57   binary
+*.rvt   binary
+*.rfa   binary
+*.rte   binary
+*.rft   binary
+*.ttf   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
+*.dll   binary
+*.dylib binary
+*.pyd   binary
+
+# If a Windows batch script is ever added, force CRLF: LF can break label/goto
+# parsing in cmd.exe. (None tracked today.)
+*.bat text eol=crlf
+*.cmd text eol=crlf
