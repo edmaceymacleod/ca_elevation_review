@@ -11,6 +11,33 @@ scope to merge: `gh auth refresh -h github.com -s workflow`, or web UI).
 
 ---
 
+## ✅ Status — 2026-06-30 (this PC session)
+
+**Shipped (merged to `main`):**
+- **T1.1** Swift kit data-contract hardening — #41
+- **T1.2** engine-not-found guard in pushbuttons — #40
+- **T1.4 + T3.5** device-type heuristic + empty-string guard — #42
+- **T3.4** curve/line device-location fallback — #43
+- **T3.6** ICP high-residual threshold → config — #44
+- **T3.1** `docs/sessions/` record template — #39
+- **T2.2 / T2.3 / T2.4** Tier-2 design decisions resolved — #45
+  (product-taste forks marked **"RECOMMENDATION (pending owner sign-off)"**)
+- **T1.3** 🔒 write-back disk-persistence idempotency cycle — **validated PASS** (this PR;
+  evidence in `docs/sessions/2026-06-30-writeback-disk-persistence-cycle.md`)
+
+**Remaining (⚙️ workflow-scope — won't auto-merge without `workflow` token scope; manual merge):**
+- **T3.2** CI job exercising the PDF→HTML fallback
+- CI follow-ups: promote the Windows kit leg to gating · pin the SwiftLint version
+
+**Awaiting owner sign-off (trivially reversible doc decisions in `design.md` / ADRs):** Revit-2024
+best-effort grade (T2.4) · bundle-transfer default + PDF-primary (T2.2) · defer the pyRevit settings
+GUI (T2.3 §6).
+
+**Frozen / deferred:** **T2.1** (C# stub freeze — GPL3 gate) · **T3.3** (icons — C# half frozen,
+pyRevit half needs assets). Mac-gated items unchanged.
+
+---
+
 ## Tier 1 — Do before the Mac (high leverage)
 
 ### ☐ T1.1 — Kit data-contract hardening ⟨M · high · no Mac⟩
