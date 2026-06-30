@@ -46,19 +46,14 @@ orientation:
   auto-merges on green. The one-time working-tree CRLF→LF flip recipe lives in
   `ios-app/CLAUDE.md` "Platform gotchas".
 
-## Action — Dependabot #29 (TRIAGED: safe to merge; needs a MANUAL merge)
+## Done — Dependabot #29 (`github-script@v7→v9`, MERGED 2026-06-30)
 
-`actions/github-script@v7→v9`, sole use `auto-merge.yml`. Reviewed adversarially:
-the script uses only the injected `github`/`context`/`core` (no
-`require('@actions/github')`, never declares `getOctokit`), so none of v9's
-breaking changes fire; the node24 runtime is on `ubuntu-latest`. House style
-floats first-party `actions/*` on major, so `@v9` fits. **Merge manually** — it
-touches `.github/workflows/`, so the bot won't (dependabot ≠ owner) and local `gh`
-lacks `workflow` scope: `gh auth refresh -h github.com -s workflow && gh pr merge 29 --squash --delete-branch`,
-or the web UI. The CI-green on #29 is vacuous (auto-merge.yml is in no
-paths-filter, so every component job skips). Post-merge smoke check: confirm the
-NEXT owner PR still auto-merges (squash + branch-delete) — `workflow_run` only
-runs the default-branch copy, so #29 cannot exercise itself.
+Triaged safe (script uses only the injected `github`/`context`/`core`, so none of
+v9's breaking changes fire; node24 runtime on `ubuntu-latest`; `@v9` matches the
+first-party `actions/*` major-float house style). Ed merged it manually (workflow
+scope) at 11:39. **Validated in production:** the next owner PR (#35) auto-merged
+at 11:42 — squash + branch-delete both fired — so `auto-merge.yml` runs clean on
+v9. No follow-up needed.
 
 ## Next steps
 
