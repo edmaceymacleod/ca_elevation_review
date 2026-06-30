@@ -74,24 +74,29 @@ def classify(match: Match, manifest: SpecManifest) -> DeviceResult:
 
     obs = match.observation
 
+    # detected_type is tri-state (see Observation in models.py):
+    #   None          -> no type detection was attempted (absent signal)
+    #   ""            -> detection ran but produced no legible/known type (failed)
+    #   non-empty str -> a detected type
+    # Strip first so a whitespace-only string is treated exactly like "" (failed),
+    # not as a real label. Only a non-empty `detected` may drive identity logic.
+    detected = (obs.detected_type or "").strip()
+    tc = obs.type_confidence
+
     # --- TYPE_MISMATCH ---------------------------------------------------- #
     if (
-        obs.detected_type
-        and obs.type_confidence is not None
-        and obs.type_confidence >= TYPE_MISMATCH_MIN_CONFIDENCE
-        and _types_disagree(device.type, obs.detected_type)
+        detected
+        and tc is not None
+        and tc >= TYPE_MISMATCH_MIN_CONFIDENCE
+        and _types_disagree(device.type, detected)
     ):
         result.verdict = Verdict.TYPE_MISMATCH
-        result.confidence = float(obs.type_confidence)
-        result.notes.append(
-            f"detected type {obs.detected_type!r} disagrees with expected {device.type!r}"
-        )
+        result.confidence = float(tc)
+        result.notes.append(f"detected type {detected!r} disagrees with expected {device.type!r}")
         return result
 
-    if obs.detected_type and not _types_disagree(device.type, obs.detected_type):
-        result.identity_confirmed = (
-            obs.type_confidence is not None and obs.type_confidence >= TYPE_MISMATCH_MIN_CONFIDENCE
-        )
+    if detected and not _types_disagree(device.type, detected):
+        result.identity_confirmed = tc is not None and tc >= TYPE_MISMATCH_MIN_CONFIDENCE
 
     # --- FLAG vs PASS ----------------------------------------------------- #
     # A non-finite delta means the geometry is undefined/corrupt. `NaN > tol` is

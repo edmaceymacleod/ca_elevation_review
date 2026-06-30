@@ -1,0 +1,50 @@
+{
+  "device_results": [
+    {
+      "approximate": false,
+      "confidence": 0.7,
+      "deltas": {
+        "mounting_height": 0.0,
+        "orientation": 0.0,
+        "position": 0.0
+      },
+      "device_id": "D-HEUR-TYPE",
+      "family": "Card Reader",
+      "identity_confirmed": false,
+      "matched_shot_id": "S1",
+      "notes": [
+        "detected type 'Exit Sign' disagrees with expected 'HID-R10'"
+      ],
+      "type": "HID-R10",
+      "verdict": "type_mismatch"
+    },
+    {
+      "approximate": false,
+      "confidence": 0.99,
+      "deltas": {
+        "mounting_height": 0.0,
+        "orientation": 0.0,
+        "position": 0.0
+      },
+      "device_id": "D-EXIT",
+      "family": "Exit Sign",
+      "identity_confirmed": false,
+      "matched_shot_id": "S1",
+      "notes": [],
+      "type": "EXIT-LED",
+      "verdict": "pass"
+    }
+  ],
+  "engine_version": "0.1.0",
+  "generated_at": "2026-06-28T00:00:00Z",
+  "project_id": "demo-type-heuristic-08",
+  "schema_version": "1.0.0",
+  "summary": {
+    "absent": 0,
+    "flag": 0,
+    "pass": 1,
+    "total": 2,
+    "type_mismatch": 1
+  },
+  "units": "feet"
+}

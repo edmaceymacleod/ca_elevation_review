@@ -45,6 +45,11 @@ SEEDERS = [
         "f07_empty_manifest",
         "f07_empty_manifest_verdict_report.json",
     ),
+    (
+        "fixtures.seeders.f08_type_heuristic",
+        "f08_type_heuristic",
+        "f08_type_heuristic_verdict_report.json",
+    ),
 ]
 
 

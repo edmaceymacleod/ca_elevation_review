@@ -150,6 +150,44 @@ def test_disagreeing_type_above_confidence_is_mismatch():
     assert r.verdict is Verdict.TYPE_MISMATCH
 
 
+def test_empty_detected_type_is_failed_not_mismatch():
+    # REGRESSION-LOCK (passes pre-impl: "" is already falsy). "" = detection
+    # attempted but produced no legible type. A high type_confidence must NOT turn
+    # an empty detection into a mismatch, and must NOT confirm identity.
+    r = _classify_with_observation("Card Reader", "", 0.9)
+    assert r.verdict is Verdict.PASS
+    assert r.identity_confirmed is False
+    assert not any("disagrees" in n for n in r.notes)
+
+
+def test_whitespace_detected_type_is_treated_as_empty():
+    # RED→GREEN DRIVER: this is the genuine gap the strip() guard closes.
+    r = _classify_with_observation("Card Reader", "   ", 0.9)
+    assert r.verdict is Verdict.PASS
+    assert r.identity_confirmed is False
+    assert not any("disagrees" in n for n in r.notes)
+
+
+def test_none_detected_type_with_high_confidence_is_pass_not_confirmed():
+    # REGRESSION-LOCK for the third tri-state arm at the verdict layer:
+    # detected_type=None WITH a high type_confidence. A confidence with no type
+    # must neither fire a mismatch nor confirm identity.
+    r = _classify_with_observation("Card Reader", None, 0.9)
+    assert r.verdict is Verdict.PASS
+    assert r.identity_confirmed is False
+    assert not any("disagrees" in n for n in r.notes)
+
+
+def test_correct_family_vs_sku_still_mismatches_documented_limitation():
+    # KNOWN-LIMITATION LOCK (see Self-Review): the heuristic emits FAMILY strings
+    # but verdict compares against device.type (a SKU). A *correctly* detected
+    # family ("Card Reader") that is not a substring of the expected SKU ("HID-R10")
+    # still reads as TYPE_MISMATCH. Pinned so any future tightening is a deliberate,
+    # test-visible change rather than a silent behavior shift.
+    r = _classify_with_observation("HID-R10", "Card Reader", 0.7)
+    assert r.verdict is Verdict.TYPE_MISMATCH
+
+
 # --- non-finite delta must NOT silently PASS -------------------------------- #
 def _classify_with_position_delta(position_delta):
     """Classify a matched device whose position delta is set directly."""

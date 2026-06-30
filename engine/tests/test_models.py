@@ -89,3 +89,18 @@ def _proj():
     from ca_elevation_engine.models import Project
 
     return Project(id="p", name="n", units="feet")
+
+
+def test_observation_empty_detected_type_roundtrips():
+    # "" is a meaningful state (detection attempted but failed); it must survive
+    # serialization, distinct from an absent (None) detected_type.
+    from ca_elevation_engine.models import Observation, Point3
+
+    o = Observation(position=Point3(0.0, 0.0, 0.0), detected_type="")
+    d = o.to_dict()
+    assert d["detected_type"] == ""
+    assert Observation.from_dict(d).detected_type == ""
+
+    absent = Observation(position=Point3(0.0, 0.0, 0.0))
+    assert "detected_type" not in absent.to_dict()
+    assert Observation.from_dict(absent.to_dict()).detected_type is None

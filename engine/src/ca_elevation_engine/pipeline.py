@@ -27,6 +27,7 @@ from .models import (
     VerdictReport,
 )
 from .register import register_capture
+from .typedetect import enrich_capture_types
 from .verdict import classify_all
 
 
@@ -70,6 +71,11 @@ def run_pipeline(
             "checked against their schemas or for non-finite coordinates"
         )
     warnings.extend(ingest.check_compatible(manifest, capture))
+
+    # Canonicalize any raw, unscored device-type hints against the manifest's
+    # family+type vocabulary so the TYPE_MISMATCH path can fire on real captures
+    # (not just fixtures that hand-author detected_type + type_confidence).
+    enrich_capture_types(capture, manifest)
 
     registrations = register_capture(manifest, capture, bundle_dir=bundle_dir)
     matches = match_all(manifest, capture, registrations)
