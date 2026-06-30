@@ -36,6 +36,13 @@ LAST_REPORT_STASH = os.path.join(tempfile.gettempdir(), "ca_elevation_last_repor
 def main():
     doc = revit.doc
 
+    # Pre-flight: if the engine cannot be located, bail with a clear remediation
+    # alert instead of running an unfindable engine and silently applying no
+    # colours. All resolution/probe logic is in the CI-tested lib.
+    location = engine_runner.can_locate_engine()
+    if not location.found:
+        forms.alert(location.reason, title="CA Elevation Review", exitscript=True)
+
     manifest_path = forms.pick_file(file_ext="json", title="Spec manifest JSON (from export)")
     if not manifest_path:
         return
@@ -47,7 +54,9 @@ def main():
         return
 
     # Out-of-process engine run (PURE/CI-tested runner; engine never imported here).
-    result = engine_runner.run_engine(manifest_path, capture_path, out_dir)
+    result = engine_runner.run_engine(
+        manifest_path, capture_path, out_dir, command=location.command
+    )
     if not result.ok:
         # report_error means the engine exited cleanly but the verdict report was
         # unreadable/corrupt; surface that distinctly from a non-zero exit so an
