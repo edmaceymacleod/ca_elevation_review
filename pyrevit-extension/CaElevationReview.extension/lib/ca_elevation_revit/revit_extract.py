@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from .manifest_builder import device_dict
 
@@ -144,34 +144,83 @@ def _resolve_level_int(el) -> int:  # noqa: ANN001
     return -1
 
 
-def _resolve_position(el) -> Optional[Dict[str, float]]:  # noqa: ANN001
-    """Return ``{x,y,z}`` in internal feet, or ``None`` if not locatable.
+# How a device's position was derived, stamped into device ``metadata`` so a
+# downstream consumer knows the confidence of each coordinate. ``location_point``
+# is the exact family insertion point; ``curve_midpoint`` is the midpoint of a
+# line/curve-based instance (a true representative, not an approximation);
+# ``bbox_centre`` is the last-resort bounding-box centre APPROXIMATION.
+POSITION_SOURCE_LOCATION_POINT = "location_point"
+POSITION_SOURCE_CURVE_MIDPOINT = "curve_midpoint"
+POSITION_SOURCE_BBOX_CENTRE = "bbox_centre"
 
-    Point-based family instances expose ``Location.Point`` directly. Line/curve-
-    based ones (rare in these categories) have no ``.Point``; for those we fall
-    back to the bounding-box centre. ``None`` means the caller should skip+count.
+
+def _xyz_to_dict(pt) -> Optional[Dict[str, float]]:  # noqa: ANN001 - pt is a Revit XYZ
+    """Convert a Revit ``XYZ``-like point to a ``{x,y,z}`` float dict, or ``None``.
+
+    Pure (no Revit import): reads ``.X/.Y/.Z`` only. Returns ``None`` if the
+    point is malformed (missing/ non-numeric coordinate) so the caller can fall
+    through to the next resolution strategy instead of aborting the device.
+    Finiteness is intentionally NOT re-checked here -- ``manifest_builder``'s
+    ``_require_finite`` remains the single source of truth for that.
     """
-    # Point-based: the insertion point is the device position.
+    try:
+        return {"x": float(pt.X), "y": float(pt.Y), "z": float(pt.Z)}
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
+def _resolve_position(el) -> Optional[Tuple[Dict[str, float], str]]:  # noqa: ANN001
+    """Return ``((x,y,z), source)`` in internal feet, or ``None`` if unlocatable.
+
+    Resolution order, best-to-worst:
+      1. ``Location.Point``          -> exact insertion point (point-based family).
+      2. ``Location.Curve`` -> ``Curve.Evaluate(0.5, True)``: the point at
+         normalised PARAMETER 0.5 (the true geometric midpoint for lines and
+         arcs; a representative mid-parameter point for splines, not the
+         arc-length midpoint). Still far better than the bbox centre for an
+         angled/sloped run. These categories are rarely curve-based.
+      3. ``get_BoundingBox`` centre  -> last-resort APPROXIMATION.
+    The second element is the ``POSITION_SOURCE_*`` tag the caller writes into
+    device metadata. ``None`` means the caller should skip + count the device.
+    """
     try:
         loc = el.Location
-        pt = getattr(loc, "Point", None)
     except Exception:
-        pt = None
-    if pt is not None:
-        return {"x": float(pt.X), "y": float(pt.Y), "z": float(pt.Z)}
+        loc = None
 
-    # Curve/line-based or no location point: bounding-box centre.
+    # 1. Point-based: the insertion point is the exact device position.
+    pt = getattr(loc, "Point", None)
+    if pt is not None:
+        xyz = _xyz_to_dict(pt)
+        if xyz is not None:
+            return xyz, POSITION_SOURCE_LOCATION_POINT
+
+    # 2. Curve/line-based: the curve midpoint (normalised parameter 0.5).
+    curve = getattr(loc, "Curve", None)
+    if curve is not None:
+        try:
+            mid = curve.Evaluate(0.5, True)  # 0.5 normalised -> midpoint
+        except Exception:
+            mid = None
+        if mid is not None:
+            xyz = _xyz_to_dict(mid)
+            if xyz is not None:
+                return xyz, POSITION_SOURCE_CURVE_MIDPOINT
+
+    # 3. Last resort: bounding-box centre (tagged so downstream treats it as
+    #    lower-confidence / an approximation).
     try:
         bbox = el.get_BoundingBox(None)
     except Exception:
         bbox = None
     if bbox is not None:
         mn, mx = bbox.Min, bbox.Max
-        return {
+        centre = {
             "x": (float(mn.X) + float(mx.X)) / 2.0,
             "y": (float(mn.Y) + float(mx.Y)) / 2.0,
             "z": (float(mn.Z) + float(mx.Z)) / 2.0,
         }
+        return centre, POSITION_SOURCE_BBOX_CENTRE
     return None
 
 
@@ -254,10 +303,11 @@ def extract_devices(
                     skipped_level += 1
                     continue
 
-                position = _resolve_position(el)
-                if position is None:
+                resolved = _resolve_position(el)
+                if resolved is None:
                     skipped_location += 1
                     continue
+                position, position_source = resolved
 
                 # Family / type names (guard the FamilyInstance-only Symbol path).
                 try:
@@ -281,7 +331,11 @@ def extract_devices(
                         # second source of truth (see acceptance criteria).
                         mounting_height=None,
                         orientation=_resolve_orientation(el),
-                        metadata={"element_id": eid_value(el.Id), "category": cat_name},
+                        metadata={
+                            "element_id": eid_value(el.Id),
+                            "category": cat_name,
+                            "position_source": position_source,
+                        },
                     )
                 )
             except Exception:
