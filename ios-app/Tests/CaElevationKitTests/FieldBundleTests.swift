@@ -1,5 +1,6 @@
 import XCTest
 @testable import CaElevationKit
+import CaElevationFixtures
 
 final class FieldBundleTests: XCTestCase {
     /// A representative manifest JSON, snake_case exactly per the engine schema.
@@ -70,6 +71,20 @@ final class FieldBundleTests: XCTestCase {
         XCTAssertEqual(device.orientation?.facingAngle, 90)
         XCTAssertEqual(device.orientation?.upAxis, .up)
         XCTAssertEqual(device.position, Point3(x: 10, y: 2, z: 3.5))
+    }
+
+    /// Encode the SHARED `Fixtures.specManifest()` (the exact value `cek-emit`
+    /// emits for the kit<->engine schema cross-check) and round-trip it, so a
+    /// malformed shared manifest fixture fails `swift test` here -- not only in
+    /// the cross-language schema job.
+    func testManifestFixtureRoundTrips() throws {
+        let original = Fixtures.specManifest()
+        let encoder = BundleIO.makeEncoder()
+        let decoder = BundleIO.makeDecoder()
+
+        let data = try encoder.encode(original)
+        let roundTripped = try decoder.decode(SpecManifest.self, from: data)
+        XCTAssertEqual(original, roundTripped)
     }
 
     func testManifestRoundTripPreservesValues() throws {
