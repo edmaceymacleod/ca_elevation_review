@@ -7,7 +7,9 @@ import pytest
 from ca_elevation_engine.models import (
     CapturePackage,
     Device,
+    Floorplan,
     Intrinsics,
+    Level,
     Observation,
     Pin,
     Point3,
@@ -97,12 +99,29 @@ def _device(did, family, dtype, x, y):
     )
 
 
-def _manifest(devices):
+def _manifest(devices, levels=None):
     return SpecManifest(
         schema_version="1.0.0",
         project=Project(id="p", name="P", units="feet"),
-        levels=[],
+        levels=levels or [],
         devices=devices,
+    )
+
+
+def _level_l1():
+    # A real level so ingest.check_compatible accepts the L1-targeted shot when a
+    # manifest is run through the full pipeline (the unit-level enrich tests call
+    # enrich_capture_types directly and never hit that check, so they use [] ).
+    return Level(
+        id="L1",
+        name="Level 1",
+        elevation=0.0,
+        floorplan=Floorplan(
+            image="plan_L1.png",
+            width_px=1000,
+            height_px=800,
+            pixel_to_model=[0.01, 0.0, 0.0, 0.0, 0.01, 0.0],
+        ),
     )
 
 
@@ -174,3 +193,31 @@ def test_enrich_marks_unknown_raw_hint_as_failed():
     enrich_capture_types(capture, manifest)
     assert obs.detected_type == ""
     assert obs.type_confidence is None
+
+
+def test_pipeline_enrich_makes_type_mismatch_fire():
+    # A raw, UNSCORED detected_type hit on an observation must, after the
+    # pipeline's enrich step, fire TYPE_MISMATCH against a disagreeing expected
+    # type -- proving the heuristic is wired in, not just unit-callable.
+    from ca_elevation_engine.models import Verdict
+    from ca_elevation_engine.pipeline import run_pipeline
+
+    manifest = _manifest(
+        [
+            _device("D-HEUR", "Card Reader", "HID-R10", 0.0, 0.0),
+            _device("D-EXIT", "Exit Sign", "EXIT-LED", 1.0, 0.0),  # seeds the catalog
+        ],
+        levels=[_level_l1()],
+    )
+    obs = Observation(
+        position=Point3(0.0, 0.0, 4.0),
+        mounting_height=4.0,
+        facing_angle=0.0,
+        detected_type="illuminated exit sign",  # raw, no type_confidence
+    )
+    capture = _capture([obs])
+    result = run_pipeline(manifest, capture, generated_at="2026-06-28T00:00:00Z")
+    by_id = {r.device_id: r for r in result.report.device_results}
+    assert by_id["D-HEUR"].verdict is Verdict.TYPE_MISMATCH
+    assert by_id["D-HEUR"].confidence == pytest.approx(SUBSTRING_MATCH_CONFIDENCE)
+    assert any("Exit Sign" in n for n in by_id["D-HEUR"].notes)
