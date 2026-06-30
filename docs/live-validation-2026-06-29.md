@@ -150,12 +150,19 @@ rolled-back `TransactionGroup` on real overridable elements (a real `View3D`):
 - **Drop-a-device:** the device removed from the new report returned to default
   overrides **and** lost its marker; the 5 kept devices re-coloured + re-marked.
 - After group rollback: 6/6 default, 6/6 unmarked, `IsModified == false`.
-- **Visual eyeball deferred** to a lightweight, client-data-free fixture (a
-  full/cropped render of the heavy linked production model is both risky and
-  un-committable as client imagery). API proof above is definitive that the
-  override paints a solid fill; the committable screenshot is a follow-up.
-  (R2025 note: `IsolateElementsTemporary` and `doc.Regenerate()` each require an
-  open transaction — both surfaced during render attempts and were rolled back.)
+- **Visual eyeball — captured** on a client-data-free fixture
+  (`sterling_test_model_R25`, a generic Sterling test wall; the production model
+  itself is never rendered to a committable image). Same element rendered twice in
+  a rolled-back section view — line-colour-only (the old gap: red edges, unfilled
+  face) vs the solid-fill override (the face renders as a solid red fill):
+
+  ![Write-back solid fill before/after](images/writeback-solid-fill-eyeball.png)
+
+  R2025 method notes: `IsolateElementsTemporary` **and** `doc.Regenerate()` each
+  require an open transaction; `ExportImage` `FitToPage` on a 3D view frames the
+  whole-model extent (not an isolated element far from the origin), so a **section
+  view** (deterministic crop) is the reliable way to frame one element. All render
+  work ran inside a rolled-back `TransactionGroup` (`IsModified == false` after).
 
 ### Item 3 — full bundle → engine → writeback on real data — **PASS**
 60 real device records (one level, read-only) → the **real `lib`**
@@ -179,7 +186,7 @@ Pin **pyRevit ≥ 6.1.0** (machine on 6.1.0.26047, latest). #3092 (6.0.0
 `docs/pyrevit-migration-plan.md` Open item 1.
 
 ### Still open (acceptable / deferred)
-- [ ] Committable solid-fill **screenshot** on a lightweight seeded fixture
-      (visual confirmation of item 2; API-confirmed above).
+- [x] Committable solid-fill **screenshot** — captured (see item 2 above,
+      `images/writeback-solid-fill-eyeball.png`).
 - [ ] Documented minor caveats remain acceptable: curve/line devices use bbox-z
       (2 seen here); `up_axis` hardcoded `'up'`.
