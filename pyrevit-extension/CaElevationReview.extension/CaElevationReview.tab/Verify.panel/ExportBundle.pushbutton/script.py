@@ -29,6 +29,7 @@ from pyrevit import forms, revit, script  # noqa: E402
 
 from ca_elevation_revit import (  # noqa: E402
     bundle_io,
+    engine_runner,
     manifest_builder,
     revit_export,
     revit_extract,
@@ -39,6 +40,13 @@ logger = script.get_logger()
 
 def main():
     doc = revit.doc
+
+    # Pre-flight the engine BEFORE the (lengthy) export + field round-trip: a
+    # bundle is useless if the engine that scores it later cannot be found, so
+    # fail fast here with a remediation hint. Logic lives in the CI-tested lib.
+    location = engine_runner.can_locate_engine()
+    if not location.found:
+        forms.alert(location.reason, title="CA Elevation Review", exitscript=True)
 
     # LIVE (Ed's hardware): walk the model + export floorplans.
     project = revit_extract.extract_project(doc)
