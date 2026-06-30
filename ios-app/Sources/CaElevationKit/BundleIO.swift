@@ -233,18 +233,25 @@ public enum BundleIO {
         // does NOT resolve symbolic links, so a symlink component (in an
         // attacker-influenced synced bundle) could otherwise pass the string
         // check while the real read/write follows the link outside the bundle.
-        // Resolve symlinks on both sides before comparing real paths. Note
+        // We therefore resolve symlinks before the containment check below. Note
         // `resolvingSymlinksInPath()` resolves only existing components, so for a
         // not-yet-created write target the existing parent is what gets checked.
         let realBase = base.resolvingSymlinksInPath().standardizedFileURL
-        let realResolved = resolved.resolvingSymlinksInPath().standardizedFileURL
 
-        // Component-wise prefix (not a bare string prefix, so a sibling like
-        // ".../Bundle-evil" can't pass).
-        let basePath = realBase.path
-        let resolvedPath = realResolved.path
-        let prefix = basePath.hasSuffix("/") ? basePath : basePath + "/"
-        guard resolvedPath == basePath || resolvedPath.hasPrefix(prefix) else {
+        // Containment check, made robust on Windows. `resolvingSymlinksInPath()`
+        // canonicalizes a FULLY-existing path (e.g. expands the 8.3 short name
+        // `ED0B62~1.MAC` -> `ed.macey-macleod`, or `RUNNER~1` -> `runneradmin` on
+        // CI) but leaves a path with a not-yet-created tail unexpanded -- so
+        // resolving `base` and `base/relativePath` INDEPENDENTLY produced
+        // mismatched ancestors, and every contained path looked like an escape.
+        // Anchor on the already-canonical `realBase`: build the candidate from it
+        // (so the base portion matches), resolve symlinks for traversal safety
+        // (a symlink pointing outside the bundle then no longer starts with
+        // `realBase`), and compare by path COMPONENTS so a sibling like
+        // ".../Bundle-evil" can't pass on a bare string prefix.
+        let resolvedReal = realBase.appendingPathComponent(relativePath)
+            .resolvingSymlinksInPath().standardizedFileURL
+        guard resolvedReal.pathComponents.starts(with: realBase.pathComponents) else {
             throw BundleIOError.pathEscapesBundle(relativePath: relativePath)
         }
         return resolved
