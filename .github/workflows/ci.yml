@@ -234,6 +234,57 @@ jobs:
         working-directory: ios-app
         run: swift test
 
+  # --- iOS: build/test the pure kit on Windows (INFORMATIONAL, additive) ------
+  #
+  # ADDITIVE portability coverage: proves CaElevationKit keeps building on the
+  # Windows MSVC toolchain. NON-GATING by design -- it is NOT in all-green's
+  # needs/R map, AND it uses job-level `continue-on-error` so a Windows-only flake
+  # never fails the CI *workflow* (which would otherwise block owner auto-merge for
+  # every iOS PR, not just gate all-green). The real Foundation-only enforcement
+  # is the grep guard in ios_kit + the gating Linux leg (ios_kit_linux); this is
+  # purely additive. Pinned to windows-2022 (VS 2022 + Swift 6.3.2 -- the env
+  # verified locally via ios-app/scripts/win-kit-test.ps1). To promote to gating
+  # once proven stable: add it to all-green's needs AND R map in ONE commit.
+  ios_kit_windows:
+    name: CaElevationKit (windows)
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      # Swift is not preinstalled on the Windows image; install + cache it.
+      - uses: SwiftyLab/setup-swift@v1.14.0
+        with:
+          swift-version: "6.3.2"
+      # MSVC linker + Windows SDK -- without an active VS dev env `swift build`
+      # fails to find `link`. SHA-pinned (v1.13.0): this is the action most exposed
+      # to Windows-image drift, so it is not floated on @v1.
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756
+        with:
+          arch: x64
+      # The Swift Windows toolchain needs SDKROOT (win-kit-test.ps1 hand-sets it).
+      # setup-swift MAY already export it; log it, and fall back if it is unset.
+      - name: Swift env diagnostic (+ SDKROOT fallback)
+        shell: pwsh
+        run: |
+          Write-Host "SDKROOT=$env:SDKROOT"
+          if (-not $env:SDKROOT) {
+            $sdk = (Get-ChildItem "$env:LOCALAPPDATA\Programs\Swift" -Recurse -Filter 'Windows.sdk' `
+              -Directory -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+            if ($sdk) { "SDKROOT=$sdk" | Out-File -FilePath $env:GITHUB_ENV -Append; Write-Host "fallback SDKROOT=$sdk" }
+          }
+      - run: swift --version
+      # --scratch-path keeps the build dir short so deep mangled object paths under
+      # the runner's checkout cannot trip Windows MAX_PATH (260).
+      - name: swift build
+        working-directory: ios-app
+        run: swift build --scratch-path C:\b
+      - name: swift test
+        working-directory: ios-app
+        run: swift test --scratch-path C:\b
+
   # --- iOS: build the actual App target so actool compiles the asset catalog --
   #
   # The ios_kit job above only builds/tests the pure CaElevationKit SwiftPM
