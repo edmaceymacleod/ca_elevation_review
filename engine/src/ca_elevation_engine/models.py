@@ -351,6 +351,18 @@ class Observation:
 
     Produced either synthetically (fixtures) or by a registration/vision
     backend. The compare step matches these against expected devices.
+
+    ``detected_type`` is tri-state:
+        * ``None``           -- no type detection was attempted (absent signal).
+        * ``""``             -- detection ran but produced no legible/known type
+                                (failed); preserved (not dropped) so the "failed"
+                                state survives a JSON round-trip.
+        * non-empty ``str``  -- a detected type.
+    Only a non-empty value can drive a TYPE_MISMATCH or confirm identity; an empty
+    string is treated as "no usable detection" everywhere downstream.
+    ``type_confidence`` is the calibrated confidence in ``detected_type`` (0..1),
+    or ``None`` when unscored. :mod:`ca_elevation_engine.typedetect` fills both in
+    from a substring heuristic when a raw, unscored ``detected_type`` arrives.
     """
 
     position: Point3
