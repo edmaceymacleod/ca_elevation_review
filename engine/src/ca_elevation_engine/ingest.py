@@ -70,9 +70,7 @@ def _check_finite(instance: Any, schema_name: str, path: tuple[str, ...] = ()) -
     """
     if isinstance(instance, float) and not math.isfinite(instance):
         loc = "/".join(path) or "<root>"
-        raise ValidationError(
-            f"{schema_name} contains a non-finite number (NaN/Infinity) at {loc}"
-        )
+        raise ValidationError(f"{schema_name} contains a non-finite number (NaN/Infinity) at {loc}")
     if isinstance(instance, dict):
         for key, value in instance.items():
             _check_finite(value, schema_name, (*path, str(key)))

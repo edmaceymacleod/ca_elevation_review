@@ -88,9 +88,7 @@ class _GoodElement:
         self.LevelId = _Eid(level_int)
         self.Location = _Loc(1.0, 2.0, 3.0)
         self.Name = "Device"
-        self.Symbol = types.SimpleNamespace(
-            Family=types.SimpleNamespace(Name="Fam"), Name="Type"
-        )
+        self.Symbol = types.SimpleNamespace(Family=types.SimpleNamespace(Name="Fam"), Name="Type")
         self.FacingOrientation = None
 
 

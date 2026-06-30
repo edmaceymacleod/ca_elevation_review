@@ -232,9 +232,7 @@ def test_frustum_bypass_match_is_marked_approximate():
 
     # Device far behind/away from the camera so it projects outside every frustum,
     # but a same-level observation sits exactly on its expected position.
-    device = Device(
-        id="d1", family="F", type="T", level_id="L1", position=Point3(0.0, 0.0, 4.0)
-    )
+    device = Device(id="d1", family="F", type="T", level_id="L1", position=Point3(0.0, 0.0, 4.0))
     manifest = SpecManifest(
         schema_version="1.0.0",
         project=Project(id="p", name="P", units="feet"),

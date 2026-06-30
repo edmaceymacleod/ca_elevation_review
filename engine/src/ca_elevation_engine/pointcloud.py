@@ -127,9 +127,7 @@ def _load_e57(path: Path) -> np.ndarray:  # pragma: no cover - heavy
     scans = []
     for scan_index in range(e57.scan_count):
         data = e57.read_scan(scan_index, ignore_missing_fields=True)
-        scans.append(
-            np.column_stack([data["cartesianX"], data["cartesianY"], data["cartesianZ"]])
-        )
+        scans.append(np.column_stack([data["cartesianX"], data["cartesianY"], data["cartesianZ"]]))
     xyz = np.vstack(scans) if len(scans) > 1 else scans[0]
     return np.ascontiguousarray(xyz, dtype=np.float64)
 
