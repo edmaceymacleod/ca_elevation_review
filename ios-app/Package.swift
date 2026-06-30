@@ -36,9 +36,24 @@ let package = Package(
             name: "CaElevationKit",
             path: "Sources/CaElevationKit"
         ),
+        // Shared, schema-valid wire-payload samples: ONE source of truth for the
+        // test suite and the cek-emit cross-check. Foundation-only (compiled by
+        // the Linux/Windows kit CI legs too -- keep it free of UIKit/ARKit).
+        .target(
+            name: "CaElevationFixtures",
+            dependencies: ["CaElevationKit"],
+            path: "Sources/CaElevationFixtures"
+        ),
+        // Emits the Fixtures payloads as JSON for the kit<->engine schema
+        // cross-check (scripts/win-xlang-check.ps1 + the xlang_schema CI job).
+        .executableTarget(
+            name: "cek-emit",
+            dependencies: ["CaElevationKit", "CaElevationFixtures"],
+            path: "Sources/cek-emit"
+        ),
         .testTarget(
             name: "CaElevationKitTests",
-            dependencies: ["CaElevationKit"],
+            dependencies: ["CaElevationKit", "CaElevationFixtures"],
             path: "Tests/CaElevationKitTests"
         )
     ]

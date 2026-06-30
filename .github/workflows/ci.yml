@@ -233,6 +233,46 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
+  # --- Kit <-> engine schema cross-check (GATING) ---------------------------
+  #
+  # Emit the Swift kit's CapturePackage + SpecManifest samples as JSON (the
+  # cek-emit executable + the shared CaElevationFixtures target), then validate
+  # them against the AUTHORITATIVE engine JSON Schemas. The kit's own tests only
+  # round-trip the encoder against ITSELF; this catches Swift <-> engine-schema
+  # drift (required fields, snake_case CodingKeys, the 16-element pose) the
+  # moment either side changes. Triggered when EITHER the kit (ios) or the
+  # schemas/validator (schema) change. Both producers run on a hosted macOS
+  # runner (Swift preinstalled), so it gates with no Swift-on-Windows setup.
+  xlang_schema:
+    name: "kit <-> schema cross-check"
+    needs: changes
+    if: needs.changes.outputs.ios == 'true' || needs.changes.outputs.schema == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      # jsonschema ONLY (pinned via the engine constraints). Do NOT install the
+      # engine here: validate_schemas.py's registered-golden check would then
+      # assert the engine's SCENARIO_GOLDENS exist under our kit-samples dir and
+      # FAIL. With the engine absent that import fails and the check degrades to
+      # a harmless NOTE.
+      - name: Install jsonschema (engine-free)
+        run: pip install -c engine/requirements-dev.txt jsonschema
+      - name: Emit kit samples (Swift encoder -> JSON)
+        working-directory: ios-app
+        run: swift run cek-emit "$RUNNER_TEMP/kit-samples" kit_sample
+      # Fail-closed guard: validate_schemas.py exits 0 on an EMPTY --fixtures dir
+      # and --strict-unknown only flags PRESENT-but-misnamed files, so without
+      # this the gate could pass having validated nothing.
+      - name: Assert both payloads were emitted
+        run: |
+          test -s "$RUNNER_TEMP/kit-samples/kit_sample.capture.json"
+          test -s "$RUNNER_TEMP/kit-samples/kit_sample.manifest.json"
+      - name: Validate kit samples against authoritative schemas
+        run: python engine/tools/validate_schemas.py --fixtures "$RUNNER_TEMP/kit-samples" --strict-unknown -v
+
   # --- Revit C# add-in (NON-GATING: Revit API assemblies absent on runners) -
   revit:
     name: revit-addin (windows)
@@ -278,7 +318,7 @@ jobs:
   all-green:
     name: all-green
     if: always()
-    needs: [changes, engine, pyrevit_floor, pyrevit_engine, schema, ios_kit, ios_app, revit, secret_scan]
+    needs: [changes, engine, pyrevit_floor, pyrevit_engine, schema, ios_kit, ios_app, xlang_schema, revit, secret_scan]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -292,6 +332,7 @@ jobs:
             [schema]="${{ needs.schema.result }}"
             [ios_kit]="${{ needs.ios_kit.result }}"
             [ios_app]="${{ needs.ios_app.result }}"
+            [xlang_schema]="${{ needs.xlang_schema.result }}"
             [secret_scan]="${{ needs.secret_scan.result }}"
           )
           bad=0
