@@ -244,9 +244,12 @@ public struct Orientation: Codable, Equatable, Sendable {
 
     /// Heading in plan the device faces, degrees, 0 = +X CCW.
     public var facingAngle: Double?
-    public var upAxis: UpAxis?
+    /// Defaults to `.up`, mirroring the engine (`Orientation.up_axis: str =
+    /// "up"`) and the schema's `"default": "up"`. A payload that omits it
+    /// decodes to `.up` on both sides; the encoder always emits it.
+    public var upAxis: UpAxis
 
-    public init(facingAngle: Double? = nil, upAxis: UpAxis? = nil) {
+    public init(facingAngle: Double? = nil, upAxis: UpAxis = .up) {
         self.facingAngle = facingAngle
         self.upAxis = upAxis
     }
@@ -254,6 +257,12 @@ public struct Orientation: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case facingAngle = "facing_angle"
         case upAxis = "up_axis"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        facingAngle = try container.decodeIfPresent(Double.self, forKey: .facingAngle)
+        upAxis = try container.decodeIfPresent(UpAxis.self, forKey: .upAxis) ?? .up
     }
 }
 
