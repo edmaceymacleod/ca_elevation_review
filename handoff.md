@@ -34,19 +34,29 @@ kit builds/tests on Windows (PR #24). Persistent records:
   (`container: swift:6.0`, no setup-swift action to drift) — the cross-toolchain
   leg `Package.swift` already claims. Both wired into `all-green` needs + R-map.
 
-## Next step — 1B only
+## 1B — Windows kit job (INFORMATIONAL, this PR)
 
-**Windows kit job (INFORMATIONAL).** The `swift build`/`swift test` Windows leg
-from the original handoff — but now that 1A (the real enforcement) and 1C (a cheap
-gating cross-toolchain leg) are landed, **1B is purely additive and can stay
-permanently informational**. Pin to `windows-2022` (the VS 2022 + Swift 6.3.2 env
-behind the local 30/30), with `timeout-minutes`, `--scratch-path` (MAX_PATH), an
-SDKROOT diagnostic/fallback, and SHA-pinned actions. Must use the `revit`-style
-`continue-on-error` so a Windows flake never fails the CI **workflow** (which would
-block owner auto-merge for *all* iOS PRs, not just gate `all-green`). Open it as a
-**draft** and confirm `swift test` actually EXECUTES on the hosted runner before
-readying it — SwiftyLab/setup-swift serving 6.3.2-on-Windows, SDKROOT export, and
-`msvc-dev-cmd` activating VS are all UNVERIFIED offline.
+The `swift build`/`swift test` Windows leg (`windows-2022`, Swift 6.3.2 via
+`SwiftyLab/setup-swift@v1.14.0` + SHA-pinned `ilammy/msvc-dev-cmd`, `--scratch-path`
+for MAX_PATH, SDKROOT diagnostic/fallback). **NON-GATING:** omitted from
+`all-green` + job-level `continue-on-error`, so a Windows flake never fails the CI
+**workflow** (which would block owner auto-merge for *all* iOS PRs). The hosted
+Swift-on-Windows setup **worked first try** (setup-swift served 6.3.2, MSVC
+activated, build + tests ran).
+
+**It immediately earned its keep:** the first run caught a real **#28 regression**
+— `BundleIO.resolvedURL` rejected *every* valid bundle path on Windows because
+`resolvingSymlinksInPath()` expands the 8.3 short name (`ED0B62~1.MAC` →
+`ed.macey-macleod`) for a fully-existing path but not for one with a not-yet-created
+tail, so the independently-resolved ancestors mismatched. Fixed in **#33** (anchor
+the containment check on the canonical `realBase`; compare by path components).
+macOS/Linux never saw it; iOS (production) is unaffected (no short names). This
+PR is rebased on #33, so its Windows job is green.
+
+**Promotion to gating** (later, optional): the kit now builds green on Windows, but
+keep it informational until the *setup* (toolchain download / action) is observed
+stable across several runs; then add `ios_kit_windows` to `all-green`'s `needs:`
+AND R-map in ONE commit.
 
 > **Merge note:** every CI PR touches `.github/workflows/ci.yml`, which neither the
 > auto-merge bot nor the local `gh` (scopes: `gist, read:org, repo`) can merge —
