@@ -134,13 +134,19 @@ def coarse_register(shot: Shot, level: Level, units: str = "feet") -> ShotRegist
     )
 
 
-# Residual at/above this (project units) is treated as an uncertain refinement:
-# confidence is NOT raised and a "high residual" note is emitted.
+# Default residual threshold (project units): at/above this an ICP refinement is
+# treated as uncertain -- confidence is NOT raised and a "high residual" note is
+# emitted. Tunable per call via refine_registration(high_residual_ft=...).
 HIGH_RESIDUAL_FT = 0.25
 
 
 def refine_registration(
-    reg: ShotRegistration, shot: Shot, manifest: SpecManifest, bundle_dir: str | None = None
+    reg: ShotRegistration,
+    shot: Shot,
+    manifest: SpecManifest,
+    bundle_dir: str | None = None,
+    *,
+    high_residual_ft: float = HIGH_RESIDUAL_FT,
 ) -> ShotRegistration:
     """Optional fine registration via ICP against model surfaces.
 
@@ -200,7 +206,7 @@ def refine_registration(
     )
     reg.camera_model_heading = geo.heading_of_pose_deg_from_matrix(reg.arkit_to_model, shot.pose)
 
-    if rmse < HIGH_RESIDUAL_FT:
+    if rmse < high_residual_ft:
         reg.confidence = min(0.9, reg.confidence + 0.15)
     else:
         reg.notes.append(f"high ICP residual (rmse={rmse:.4f}); refinement uncertain")
@@ -258,7 +264,13 @@ def _icp_refine(
     return correction, float(result.inlier_rmse)
 
 
-def register_capture(manifest: SpecManifest, capture, bundle_dir: str | None = None):
+def register_capture(
+    manifest: SpecManifest,
+    capture,
+    bundle_dir: str | None = None,
+    *,
+    high_residual_ft: float = HIGH_RESIDUAL_FT,
+):
     """Register every shot. Returns ``dict[shot_id -> ShotRegistration]``."""
     units = manifest.project.units
     out = {}
@@ -267,6 +279,8 @@ def register_capture(manifest: SpecManifest, capture, bundle_dir: str | None = N
         if level is None:  # pragma: no cover - guarded earlier by ingest checks
             continue
         reg = coarse_register(shot, level, units=units)
-        reg = refine_registration(reg, shot, manifest, bundle_dir=bundle_dir)
+        reg = refine_registration(
+            reg, shot, manifest, bundle_dir=bundle_dir, high_residual_ft=high_residual_ft
+        )
         out[shot.id] = reg
     return out

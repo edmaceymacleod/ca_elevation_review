@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from ca_elevation_engine import geometry as geo
-from ca_elevation_engine import ingest
+from ca_elevation_engine import ingest, register
 from ca_elevation_engine import pointcloud as pc
 from ca_elevation_engine.register import (
     coarse_register,
@@ -171,3 +171,117 @@ def test_refine_backend_missing_note_via_monkeypatch(
     out = refine_registration(reg, shot, manifest, bundle_dir="/whatever")
     assert out.refined is False
     assert any("backend missing" in n for n in out.notes)
+
+
+# --- high_residual_ft is a tunable threshold (default 0.25) ----------------- #
+def _force_icp(monkeypatch, rmse: float) -> None:
+    """Make refine_registration reach the residual branch deterministically.
+
+    Stubs the cloud loader (so no real .ply is needed) and the heavy ICP (so no
+    open3d), returning an identity correction with a fixed rmse. The f01 manifest
+    has devices on L1, so the real model_surface_target returns a non-None target
+    and the refinement proceeds.
+    """
+    monkeypatch.setattr(pc, "load_point_cloud", lambda *a, **k: np.zeros((4, 3), dtype=np.float64))
+    monkeypatch.setattr(register, "_icp_refine", lambda *a, **k: (np.eye(4), rmse))
+
+
+def _fresh_reg(manifest, f01_capture_path):
+    """A fresh coarse registration (+ its shot) carrying a cloud ref.
+
+    refine_registration mutates its `reg`, so every assertion needs a clean one.
+    """
+    shot = _shot_with_cloud(f01_capture_path, "clouds/s.ply")
+    return shot, coarse_register(shot, manifest.level_by_id("L1"))
+
+
+def test_refine_default_threshold_pins_025(monkeypatch, f01_manifest_path, f01_capture_path):
+    # The default threshold IS the module constant, and it IS 0.25. This is the
+    # one acceptance criterion of the refactor ("default behavior identical"), so
+    # pin both the value and the 0.25 boundary with NO override.
+    assert register.HIGH_RESIDUAL_FT == 0.25
+    manifest = ingest.load_manifest(f01_manifest_path)
+
+    # Just below 0.25 -> good: confidence raised, no high-residual note.
+    shot, reg = _fresh_reg(manifest, f01_capture_path)
+    base_conf = reg.confidence  # 0.75 for the "high" pin in f01
+    _force_icp(monkeypatch, rmse=0.24)
+    good = refine_registration(reg, shot, manifest, bundle_dir="/whatever")
+    assert good.refined is True
+    assert good.residual == pytest.approx(0.24)
+    assert good.confidence > base_conf
+    assert not any("high ICP residual" in n for n in good.notes)
+
+    # Just above 0.25 -> high: note emitted, confidence NOT raised. If the default
+    # were widened (e.g. to 0.50) this branch would flip and the test would fail.
+    shot2, reg2 = _fresh_reg(manifest, f01_capture_path)
+    base_conf2 = reg2.confidence
+    _force_icp(monkeypatch, rmse=0.26)
+    high = refine_registration(reg2, shot2, manifest, bundle_dir="/whatever")
+    assert high.refined is True
+    assert high.residual == pytest.approx(0.26)
+    assert high.confidence == pytest.approx(base_conf2)
+    assert any("high ICP residual" in n for n in high.notes)
+
+
+def test_refine_residual_equal_to_threshold_is_high(
+    monkeypatch, f01_manifest_path, f01_capture_path
+):
+    # Comparison is strict `rmse < threshold` (register.py:203): at EQUALITY the
+    # refinement is HIGH. Guards a silent `<` -> `<=` refactor at the boundary.
+    manifest = ingest.load_manifest(f01_manifest_path)
+    shot, reg = _fresh_reg(manifest, f01_capture_path)
+    base_conf = reg.confidence
+    _force_icp(monkeypatch, rmse=0.20)
+    out = refine_registration(reg, shot, manifest, bundle_dir="/whatever", high_residual_ft=0.20)
+    assert out.refined is True
+    assert out.confidence == pytest.approx(base_conf)  # equality is NOT below threshold
+    assert any("high ICP residual" in n for n in out.notes)
+
+
+def test_refine_override_lowers_threshold_so_same_residual_is_high(
+    monkeypatch, f01_manifest_path, f01_capture_path
+):
+    manifest = ingest.load_manifest(f01_manifest_path)
+    shot, reg = _fresh_reg(manifest, f01_capture_path)
+    base_conf = reg.confidence
+    _force_icp(monkeypatch, rmse=0.20)  # same residual...
+    # ...but override the threshold below it: now 0.20 >= 0.10 -> "high residual".
+    out = refine_registration(reg, shot, manifest, bundle_dir="/whatever", high_residual_ft=0.10)
+    assert out.refined is True
+    assert out.residual == pytest.approx(0.20)
+    assert out.confidence == pytest.approx(base_conf)  # NOT raised
+    assert any("high ICP residual" in n for n in out.notes)
+
+
+def test_refine_override_raises_threshold_so_high_residual_is_good(
+    monkeypatch, f01_manifest_path, f01_capture_path
+):
+    # Symmetric proof: the override can also RAISE the bar (good branch via the
+    # param), so a residual above the default 0.25 is accepted as good.
+    manifest = ingest.load_manifest(f01_manifest_path)
+    shot, reg = _fresh_reg(manifest, f01_capture_path)
+    base_conf = reg.confidence
+    _force_icp(monkeypatch, rmse=0.30)  # above default 0.25...
+    # ...but raise the threshold above it: 0.30 < 0.40 -> good branch.
+    out = refine_registration(reg, shot, manifest, bundle_dir="/whatever", high_residual_ft=0.40)
+    assert out.refined is True
+    assert out.residual == pytest.approx(0.30)
+    assert out.confidence > base_conf
+    assert not any("high ICP residual" in n for n in out.notes)
+
+
+def test_register_capture_forwards_high_residual_ft(
+    monkeypatch, f01_manifest_path, f01_capture_path
+):
+    manifest = ingest.load_manifest(f01_manifest_path)
+    capture = ingest.load_capture(f01_capture_path)
+    for shot in capture.shots:
+        shot.point_cloud = "clouds/s.ply"
+    _force_icp(monkeypatch, rmse=0.20)
+
+    regs = register_capture(manifest, capture, high_residual_ft=0.10)
+    # Override propagated: 0.20 >= 0.10 -> every refined shot flagged high-residual.
+    assert regs  # non-empty
+    assert all(r.refined for r in regs.values())
+    assert all(any("high ICP residual" in n for n in r.notes) for r in regs.values())
