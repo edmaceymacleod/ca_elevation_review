@@ -70,6 +70,19 @@ swift build          # builds CaElevationKit
 swift test           # runs the headless XCTest suite
 ```
 
+**On Windows** (Swift.org toolchain), the kit builds and tests too — only the
+`CaElevationApp` ARKit/SwiftUI layer is Mac-only. One-time:
+`winget install --id Swift.Toolchain -e` (needs VS 2022 with the "Desktop
+development with C++" workload — for the MSVC linker). Then:
+
+```powershell
+pwsh -File ios-app/scripts/win-kit-test.ps1   # enters the VS dev env, sets SDKROOT, swift build + test
+```
+
+The script handles the two Windows-specific needs (the MSVC linker via the VS
+Developer environment, and `SDKROOT` + the toolchain on PATH). Validated
+2026-06-29 on Swift 6.3.2 (`x86_64-unknown-windows-msvc`): 29/29 kit tests pass.
+
 **The app target (in Xcode, on a Mac) — generated from `project.yml`:**
 
 The App target is defined declaratively in `project.yml` (XcodeGen) — including
