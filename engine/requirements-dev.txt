@@ -37,7 +37,7 @@ mypy_extensions==1.1.0
 numpy==2.2.6
 packaging==26.2
 pathspec==1.1.1
-pillow==12.2.0
+pillow==12.3.0
 pluggy==1.6.0
 pytest-cov==7.1.0
 pytest==9.1.1
