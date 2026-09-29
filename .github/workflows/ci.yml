@@ -75,7 +75,7 @@ jobs:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -108,7 +108,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -140,7 +140,7 @@ jobs:
         python-version: ["3.8", "3.9"]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install floor toolchain (capped; NO engine)
@@ -172,7 +172,7 @@ jobs:
         python-version: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -193,7 +193,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: pip install -c engine/requirements-dev.txt -e "engine"
@@ -290,7 +290,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # Swift is not preinstalled on the Windows image; install + cache it.
-      - uses: SwiftyLab/setup-swift@v1.14.0
+      - uses: SwiftyLab/setup-swift@v1.14.1
         with:
           swift-version: "6.3.2"
       # MSVC linker + Windows SDK -- without an active VS dev env `swift build`
@@ -375,7 +375,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       # jsonschema ONLY (pinned via the engine constraints). Do NOT install the
@@ -409,7 +409,7 @@ jobs:
       SOLUTION: revit-addin/CaElevationReview.sln
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "8.0.x"
       - name: Restore
